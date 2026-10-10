@@ -1,0 +1,3 @@
+torch>=2.3
+numpy>=1.26
+# Install compatible transformers/torchaudio/FAISS for your GPU and pinned experiments.
