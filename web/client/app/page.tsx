@@ -27,6 +27,7 @@ export default function Home(){
   const [active,setActive]=useState<string|null>(null);
   const [audioUrl,setAudioUrl]=useState("");
   const [blob,setBlob]=useState<Blob|null>(null);
+  const [recordedFor,setRecordedFor]=useState<string|null>(null);
   const [courseName,setCourseName]=useState("");
   const [newPrompt,setNewPrompt]=useState("");
   const [adminCourse,setAdminCourse]=useState("");
@@ -53,7 +54,7 @@ export default function Home(){
   }
   function clearAudio(){
     if(urlRef.current){URL.revokeObjectURL(urlRef.current);urlRef.current=""}
-    setAudioUrl("");setBlob(null);
+    setAudioUrl("");setBlob(null);setRecordedFor(null);
   }
   async function start(id:string){
     clearAudio();setError("");
@@ -65,7 +66,7 @@ export default function Home(){
       r.ondataavailable=e=>{if(e.data.size)chunks.current.push(e.data)};
       r.onstop=()=>{
         const output=new Blob(chunks.current,{type:"audio/webm"});
-        setBlob(output);const url=URL.createObjectURL(output);urlRef.current=url;setAudioUrl(url);
+        setBlob(output);setRecordedFor(id);const url=URL.createObjectURL(output);urlRef.current=url;setAudioUrl(url);
         stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;
       };
       r.start();recorder.current=r;setActive(id);
@@ -73,7 +74,7 @@ export default function Home(){
   }
   function stop(){recorder.current?.stop();recorder.current=null;setActive(null)}
   async function upload(id:string){
-    if(!blob)return;
+    if(!blob||recordedFor!==id){setError("Bản ghi không thuộc câu này");return;}
     setBusy(true);setError("");
     try{
       const form=new FormData();form.append("prompt_id",id);form.append("audio",blob,"utterance.webm");
@@ -141,7 +142,7 @@ export default function Home(){
           <p><strong>{t.text}</strong></p><p style={{color:"#667587"}}>Ngôn ngữ: {t.language} · {t.status||"Chưa ghi âm"}</p>
           {!t.recording_id&&<>{active===t.id?<button style={{...button,background:"#b52e35"}} onClick={stop}>Dừng ghi âm</button>:
           <button style={button} disabled={!!active||busy} onClick={()=>start(t.id)}>Bắt đầu ghi âm</button>}
-          {audioUrl&&!active&&<div><audio controls src={audioUrl}/><br/><button style={button} disabled={busy} onClick={()=>upload(t.id)}>Gửi bản ghi này</button>
+          {audioUrl&&!active&&recordedFor===t.id&&<div><audio controls src={audioUrl}/><br/><button style={button} disabled={busy} onClick={()=>upload(t.id)}>Gửi bản ghi này</button>
           <button style={{...button,background:"#526271"}} onClick={clearAudio}>Ghi lại</button></div>}</>}
         </div>)}
       </section>
