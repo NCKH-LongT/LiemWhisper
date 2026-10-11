@@ -1,9 +1,24 @@
-# LiemWhisper student/admin client
+# Student & Admin web — pilot
 
-**Planned:** Next.js + React + TypeScript. Do not treat this placeholder as a runnable application.
+```bash
+cd web/client
+npm install
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
+```
 
-Student flow: authenticate -> consent -> survey -> obtain server-issued assignment -> record using MediaRecorder -> playback -> submit -> track upload/review state.
+Browse http://localhost:3000 (requires backend started at 8000).
 
-Admin/reviewer flow: create course and immutable dataset versions -> publish prompts -> inspect progress -> listen and correct verbatim transcripts -> approve/reject recordings.
+### Implemented
+- Consent checkbox and short survey; server issues a pseudonymous participant token.
+- Course list and published prompts assigned from API.
+- Browser MediaRecorder (Chrome/Edge WebM/Opus), playback, re-record and one upload per prompt.
+- Basic admin tools: create courses, create/publish prompts, list review items and submit verbatim review.
 
-Accessibility, mobile microphone compatibility and network retry are acceptance criteria. Audio must never be uploaded to GitHub or directly to a public Drive folder.
+### Known limitations / before real study
+- Prototype admin key is entered in the browser: unsuitable for public deployment; replace with secure session-based RBAC.
+- Browser holds participant token in memory only; user must copy it securely to return.
+- Admin audio playback currently requires authenticated API call separately; no player in this initial interface.
+- No withdraw/delete account flow or ethics-approved complete consent disclosure.
+- No recording time limit or accessible/mobile microphone compatibility testing yet; server validates maximum upload bytes only.
+- No authenticated export/analytics yet. Google Drive storage is configured on backend, not browser.
+- Do not collect actual participant data before institutionally approved research consent and operational security controls.
