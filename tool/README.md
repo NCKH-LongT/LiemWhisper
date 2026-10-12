@@ -4,8 +4,8 @@ Hệ thống web thu thập dữ liệu giọng nói tiếng Việt có chêm xe
 
 ## Kiến trúc đã triển khai
 
-- **Frontend (`web/client`):** Next.js 15 (React 19, TypeScript), responsive, hỗ trợ AudioContext live visualizer và MediaRecorder thích ứng đa nền tảng (Chrome/Edge: WebM/Opus, Safari/iOS: MP4/AAC).
-- **Backend (`web/backend`):** FastAPI + SQLite (WAL mode, mở rộng PostgreSQL), HTTP Range-request audio streaming (206 Partial Content), mã hóa SHA-256 checksum, pipeline kiểm duyệt và export ZIP.
+- **Frontend (`tool/client`):** Next.js 15 (React 19, TypeScript), responsive, hỗ trợ AudioContext live visualizer và MediaRecorder thích ứng đa nền tảng (Chrome/Edge: WebM/Opus, Safari/iOS: MP4/AAC).
+- **Backend (`tool/backend`):** FastAPI + SQLite (WAL mode, mở rộng PostgreSQL), HTTP Range-request audio streaming (206 Partial Content), mã hóa SHA-256 checksum, pipeline kiểm duyệt và export ZIP.
 - **Dữ liệu cục bộ (`private-data/`):** Lưu trữ file âm thanh và file SQLite độc lập, an toàn, hỗ trợ Docker volume.
 
 ## Phân quyền & Vai trò (Role-Based Access)
@@ -27,25 +27,40 @@ Hệ thống web thu thập dữ liệu giọng nói tiếng Việt có chêm xe
   3. **🎧 Studio Kiểm duyệt Ghi âm:** Nghe trực tiếp qua streaming audio, nghe tua, sửa verbatim transcript thực tế, duyệt (`approved`), từ chối (`rejected`), hoặc yêu cầu thu lại (`rerecord`).
   4. **💾 Xuất Dữ liệu:** Xuất Manifest JSON, CSV và tải trọn gói ZIP (tất cả audio + metadata) sẵn sàng huấn luyện AI.
 
-## Hướng dẫn Khởi chạy Local
+## Phạm vi thư mục
 
-### Backend (FastAPI - Port 8000)
+Mã nguồn, Docker Compose, cấu hình mẫu và script nạp câu hỏi nằm trong `tool/`. Các lệnh bên dưới bắt đầu từ thư mục gốc repository, mỗi phần chạy trong một terminal riêng.
+
+Dữ liệu đang có được giữ nguyên ở `private-data/` tại gốc repository để không làm hỏng đường dẫn âm thanh đã lưu trong SQLite. Thư mục `web/private-data/` cũ cũng được giữ nguyên, không xóa hay ghi đè. `research/`, `paper/`, `docs/` và `todo.md` là tài liệu/nghiên cứu chung, không chuyển vào tool.
+
+## Hướng dẫn Khởi chạy
+
+### 1. Khởi chạy bằng Docker Compose (Khuyên dùng)
 ```bash
-python -m uvicorn app.main:app --app-dir web/backend --host 127.0.0.1 --port 8000 --reload
+cd tool
+docker-compose up --build -d
 ```
-- Swagger Docs: `http://localhost:8000/docs`
+
+### 2. Khởi chạy thủ công từng phần
+
+#### Backend (FastAPI - Port 8000)
+```bash
+cd tool/backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+- Swagger API Docs: `http://localhost:8000/docs`
 - Healthcheck: `http://localhost:8000/health`
 
-### Frontend (Next.js - Port 3000)
+#### Frontend (Next.js - Port 3000)
 ```bash
-cd web/client
+cd tool/client
 npm install
 npm run build
 npm start
 ```
 - Web Portal: `http://localhost:3000`
 
-### Chạy bằng Docker Compose
+#### Nạp dữ liệu mẫu ban đầu (20 câu Kiểm thử phần mềm):
 ```bash
-docker-compose up --build -d
+PYTHONPATH=tool/backend python tool/scripts/seed_prompts.py
 ```

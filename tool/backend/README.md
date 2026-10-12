@@ -7,13 +7,13 @@ Implemented in `app/main.py` with FastAPI, SQLite metadata, secure random partic
 ## Local start
 
 ```bash
-cd web/backend
+cd tool/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export ADMIN_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export WEB_PUBLIC_URL=http://localhost:3000
-export DATA_ROOT=./private-data
+# Default storage remains repository-root/private-data; override DATA_ROOT only intentionally.
 export STORAGE_BACKEND=local
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```

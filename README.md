@@ -32,7 +32,10 @@ LiemWhisper/
 ├── todo.md
 ├── .gitignore
 ├── .env.example
-├── web/
+├── tool/
+│   ├── docker-compose.yml
+│   ├── .env.example
+│   ├── scripts/
 │   ├── README.md
 │   ├── client/                 # student/admin browser application
 │   └── backend/                # API, authentication, DB, Drive integration
@@ -120,7 +123,7 @@ See [todo.md](todo.md) for phased tasks, deliverables and definition of done. Sc
 
 ## Setup status
 
-This initial repository commit supplies documentation and a minimal development scaffold. Refer to `web/README.md` and `research/README.md` for the intended setup. Configure `.env` from `.env.example` on the server only; never commit keys.
+This initial repository commit supplies documentation and a minimal development scaffold. Refer to `tool/README.md` and `research/README.md` for the intended setup. Configure `.env` from `.env.example` on the server only; never commit keys.
 
 ## Data and licensing
 

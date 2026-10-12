@@ -1,7 +1,7 @@
 # Student & Admin web — pilot
 
 ```bash
-cd web/client
+cd tool/client
 npm install
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```

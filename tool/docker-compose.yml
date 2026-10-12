@@ -1,7 +1,7 @@
 services:
   backend:
     build:
-      context: ./web/backend
+      context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -16,7 +16,7 @@ services:
 
   client:
     build:
-      context: ./web/client
+      context: ./client
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
