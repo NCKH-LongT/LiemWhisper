@@ -1,6 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getDriveSyncStatusInfo, isBothSaved } from "../lib/sync";
+import {
+  validateNoSecretInUrl,
+  sanitizeApiError,
+  sanitizeNotice,
+  maskSecretToken,
+  cleanLegacyAdminStorage
+} from "../lib/security";
+import { DriveStatusResponse } from "../lib/drive";
+import { downloadAuthenticatedExport } from "../lib/auth-fetch";
+import { AdminDrivePanel } from "../components/AdminDrivePanel";
+import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -21,6 +33,8 @@ type Task = {
   recording_id: string | null;
   status: string | null;
   duration_seconds?: number;
+  drive_sync_status?: string | null;
+  drive_sync_message?: string | null;
 };
 
 type ParticipantMe = {
@@ -132,9 +146,9 @@ function ChevronRightIcon({ size = 15 }: { size?: number }) {
   );
 }
 
-function DownloadIcon({ size = 15 }: { size?: number }) {
+function DownloadIcon({ size = 15, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -170,10 +184,16 @@ function ShieldIcon({ size = 14 }: { size?: number }) {
 }
 
 async function request(path: string, opts: RequestInit = {}) {
+  const check = validateNoSecretInUrl(path);
+  if (!check.valid) {
+    throw new Error(`Bảo mật: Không được chuyển thông tin bí mật (${check.forbiddenParam}) qua URL query.`);
+  }
+
   const res = await fetch(API + path, opts);
   const data = await res.json().catch(() => ({ detail: "Phản hồi không hợp lệ từ máy chủ." }));
   if (!res.ok) {
-    throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+    const rawMsg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    throw new Error(sanitizeApiError(rawMsg));
   }
   return data;
 }
@@ -205,6 +225,8 @@ export default function Home() {
   // Student session data
   const [token, setToken] = useState("");
   const [participantInfo, setParticipantInfo] = useState<ParticipantMe | null>(null);
+  const [showSecretToken, setShowSecretToken] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
 
   // Signup form state
   const [consent, setConsent] = useState(false);
@@ -219,6 +241,7 @@ export default function Home() {
   const [selectedCourse, setSelectedCourse] = useState("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [syncRefreshing, setSyncRefreshing] = useState(false);
 
   // Recording studio state
   const [isRecording, setIsRecording] = useState(false);
@@ -233,10 +256,11 @@ export default function Home() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  // Admin state
+  // Admin state (Memory only, never persisted to localStorage)
   const [adminKey, setAdminKey] = useState("");
   const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "reviews" | "export">("stats");
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [driveStatus, setDriveStatus] = useState<DriveStatusResponse | null>(null);
   const [adminCourses, setAdminCourses] = useState<any[]>([]);
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newCourseDesc, setNewCourseDesc] = useState("");
@@ -261,18 +285,16 @@ export default function Home() {
 
   // Initialize and restore saved sessions from localStorage
   useEffect(() => {
+    // Admin key is memory-only; clear any legacy persistent entry
+    cleanLegacyAdminStorage();
+
+    // Student token localStorage retained for now with documented limitation (no HttpOnly session claim)
     const savedRole = localStorage.getItem("liemwhisper_role");
     const savedToken = localStorage.getItem("liemwhisper_token");
-    const savedAdminKey = localStorage.getItem("liemwhisper_admin_key");
 
     loadCourses();
 
-    if (savedRole === "admin" && savedAdminKey) {
-      setAdminKey(savedAdminKey);
-      setRole("admin");
-      loadAdminStats(savedAdminKey);
-      loadAdminCourses(savedAdminKey);
-    } else if (savedRole === "student" && savedToken) {
+    if (savedRole === "student" && savedToken) {
       setToken(savedToken);
       setRole("student");
       loadParticipantMe(savedToken);
@@ -319,7 +341,7 @@ export default function Home() {
   }
 
   function alertError(e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = sanitizeApiError(e);
     setError(msg);
     setNotice("");
   }
@@ -371,12 +393,29 @@ export default function Home() {
     }
   }
 
+  // Refresh sync status manually while strictly avoiding resetting active recording or audio
+  async function refreshTasksSyncStatus() {
+    if (!token || !selectedCourse) return;
+    setSyncRefreshing(true);
+    try {
+      const data: Task[] = await request("/api/v1/tasks?course_id=" + encodeURIComponent(selectedCourse), {
+        headers: { "x-participant-token": token }
+      });
+      setTasks(data);
+      setNotice("Đã cập nhật trạng thái đồng bộ mới nhất từ hệ thống.");
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setSyncRefreshing(false);
+    }
+  }
+
   // ---------------- AUTHENTICATION HANDLERS ----------------
 
   async function handleStudentLogin() {
-    const ident = studentIdentifierInput.trim();
-    if (!ident) {
-      setError("Vui lòng nhập Mã sinh viên hoặc Token của bạn.");
+    const secretToken = studentIdentifierInput.trim();
+    if (!secretToken) {
+      setError("Vui lòng nhập Mã truy cập bí mật của bạn.");
       return;
     }
     setBusy(true);
@@ -385,14 +424,18 @@ export default function Home() {
       const res = await request("/api/v1/auth/student-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: ident })
+        body: JSON.stringify({ identifier: secretToken })
       });
-      const activeTok = res.token || ident;
+      const activeTok = res.token || secretToken;
       setToken(activeTok);
+      // Retained in localStorage for convenience with documented limitation (no HttpOnly claim)
       localStorage.setItem("liemwhisper_token", activeTok);
       localStorage.setItem("liemwhisper_role", "student");
       setRole("student");
-      setNotice(`Đăng nhập thành công. Người dùng: ${res.participant_code || ident}`);
+
+      // Never echo secret access token in user notice
+      const displayName = res.participant_code || "Người tham gia";
+      setNotice(`Đăng nhập thành công. Tài khoản: ${displayName}`);
 
       await loadParticipantMe(activeTok);
       const cList = await loadCourses();
@@ -433,7 +476,9 @@ export default function Home() {
       localStorage.setItem("liemwhisper_token", res.participant_token);
       localStorage.setItem("liemwhisper_role", "student");
       setRole("student");
-      setNotice(`Đăng ký thành công. Mã định danh: ${res.participant_code}`);
+
+      // Only display pseudonymous code, never echo raw secret token
+      setNotice(`Đăng ký thành công. Mã định danh: ${res.participant_code || "Mới"}`);
 
       await loadParticipantMe(res.participant_token);
       const cList = await loadCourses();
@@ -463,14 +508,18 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key })
       });
-      const validKey = res.token || key;
-      setAdminKey(validKey);
-      localStorage.setItem("liemwhisper_admin_key", validKey);
-      localStorage.setItem("liemwhisper_role", "admin");
+      // Issued opaque session token (8h TTL) - keep in memory only
+      const sessionToken = res.token || key;
+      setAdminKey(sessionToken);
+
+      // Clean any legacy persistent entry; do not persist admin session
+      cleanLegacyAdminStorage();
+
       setRole("admin");
       setNotice("Đăng nhập quyền quản trị viên thành công.");
-      await loadAdminStats(validKey);
-      await loadAdminCourses(validKey);
+      await loadAdminStats(sessionToken);
+      await loadAdminCourses(sessionToken);
+      await loadDriveStatus(sessionToken);
     } catch (e) {
       alertError(e);
     } finally {
@@ -478,15 +527,27 @@ export default function Home() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
     cleanupMedia();
+    if (role === "admin" && adminKey) {
+      try {
+        await request("/api/v1/auth/admin-logout", {
+          method: "POST",
+          headers: { "x-admin-key": adminKey }
+        });
+      } catch {
+        // Backend may expire or route separately; proceed to clear local memory
+      }
+    }
+
+    cleanLegacyAdminStorage();
     localStorage.removeItem("liemwhisper_role");
     localStorage.removeItem("liemwhisper_token");
-    localStorage.removeItem("liemwhisper_admin_key");
     setRole("guest");
     setToken("");
     setAdminKey("");
     setParticipantInfo(null);
+    setDriveStatus(null);
     setTasks([]);
     clearRecordedAudio();
     setNotice("Đã kết thúc phiên làm việc.");
@@ -640,18 +701,36 @@ export default function Home() {
       form.append("audio", recordedBlob, `recording.${ext}`);
       form.append("duration", recordedDuration.toFixed(2));
 
-      await request("/api/v1/recordings", {
+      const res = await request("/api/v1/recordings", {
         method: "POST",
         headers: { "x-participant-token": token },
         body: form
       });
 
-      setNotice("Đã lưu bản ghi. Đang chuyển sang câu tiếp theo.");
+      // Use returned recording_id (not placeholder "uploaded")
+      const returnedRecId = res.recording_id || taskId;
+      const driveSyncStatus = res.drive_sync_status || null;
+      const driveSyncMsg = res.drive_sync_message || null;
+      const syncInfo = getDriveSyncStatusInfo(driveSyncStatus, driveSyncMsg);
+
       clearRecordedAudio();
 
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, recording_id: "uploaded", status: "pending_review" } : t))
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                recording_id: returnedRecId,
+                status: res.status || "pending_review",
+                drive_sync_status: driveSyncStatus,
+                drive_sync_message: driveSyncMsg
+              }
+            : t
+        )
       );
+
+      // Do not claim both saved until synced
+      setNotice(syncInfo.description);
 
       if (currentIndex < tasks.length - 1) {
         setCurrentIndex((i) => i + 1);
@@ -665,11 +744,26 @@ export default function Home() {
 
   // ---------------- ADMIN ACTIONS ----------------
 
+  async function loadDriveStatus(keyOverride?: string) {
+    const k = keyOverride || adminKey;
+    if (!k) return;
+    try {
+      const data: DriveStatusResponse = await request("/api/v1/admin/drive/status", {
+        headers: { "x-admin-key": k }
+      });
+      setDriveStatus(data);
+    } catch {
+      setDriveStatus(null);
+    }
+  }
+
   async function loadAdminStats(keyOverride?: string) {
     const k = keyOverride || adminKey;
     if (!k) return;
     try {
-      const data = await request("/api/v1/admin/stats?key=" + encodeURIComponent(k));
+      const data = await request("/api/v1/admin/stats", {
+        headers: { "x-admin-key": k }
+      });
       setStats(data);
     } catch (e) {
       alertError(e);
@@ -680,7 +774,9 @@ export default function Home() {
     const k = keyOverride || adminKey;
     if (!k) return;
     try {
-      const data = await request("/api/v1/admin/courses?key=" + encodeURIComponent(k));
+      const data = await request("/api/v1/admin/courses", {
+        headers: { "x-admin-key": k }
+      });
       setAdminCourses(data);
       if (data.length > 0 && !bulkCourseId) {
         setBulkCourseId(data[0].id);
@@ -694,9 +790,12 @@ export default function Home() {
     if (!newCourseTitle.trim()) return;
     setBusy(true);
     try {
-      await request("/api/v1/admin/courses?key=" + encodeURIComponent(adminKey), {
+      await request("/api/v1/admin/courses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey
+        },
         body: JSON.stringify({ title: newCourseTitle.trim(), description: newCourseDesc.trim() })
       });
       setNewCourseTitle("");
@@ -718,9 +817,12 @@ export default function Home() {
     }
     setBusy(true);
     try {
-      const res = await request(`/api/v1/admin/courses/${bulkCourseId}/prompts/bulk?key=` + encodeURIComponent(adminKey), {
+      const res = await request(`/api/v1/admin/courses/${bulkCourseId}/prompts/bulk`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey
+        },
         body: JSON.stringify({
           raw_text: bulkText,
           language: "vi-en",
@@ -742,8 +844,10 @@ export default function Home() {
     if (!adminKey) return;
     setBusy(true);
     try {
-      const url = `/api/v1/admin/recordings?status=${reviewFilterStatus}&key=` + encodeURIComponent(adminKey);
-      const data = await request(url);
+      const url = `/api/v1/admin/recordings?status=${encodeURIComponent(reviewFilterStatus)}`;
+      const data = await request(url, {
+        headers: { "x-admin-key": adminKey }
+      });
       setReviewList(data);
       const draftMap: Record<string, string> = {};
       data.forEach((item: ReviewItem) => {
@@ -759,9 +863,12 @@ export default function Home() {
 
   async function submitReview(recordingId: string, status: "approved" | "rejected" | "rerecord") {
     try {
-      await request(`/api/v1/admin/recordings/${recordingId}/review?key=` + encodeURIComponent(adminKey), {
+      await request(`/api/v1/admin/recordings/${recordingId}/review`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey
+        },
         body: JSON.stringify({
           status,
           transcript: reviewTranscripts[recordingId] || "",
@@ -772,6 +879,22 @@ export default function Home() {
       await loadReviews();
     } catch (e) {
       alertError(e);
+    }
+  }
+
+  async function handleExportDownload(endpoint: string, filename: string) {
+    if (!adminKey) {
+      setError("Vui lòng đăng nhập lại để xuất dữ liệu.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await downloadAuthenticatedExport(API, endpoint, filename, adminKey);
+      setNotice(`Đã tải xuống thành công ${filename}.`);
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -977,7 +1100,7 @@ export default function Home() {
               }}
             >
               {role === "admin" ? <ShieldIcon size={14} /> : <UserIcon size={14} />}
-              <span>{role === "admin" ? "Quản trị viên" : `Sinh viên: ${participantInfo?.participant_code || token}`}</span>
+              <span>{role === "admin" ? "Quản trị viên" : `Sinh viên: ${participantInfo?.participant_code || "Người tham gia"}`}</span>
             </div>
 
             <button onClick={handleLogout} style={styles.btnSecondary}>
@@ -1057,7 +1180,7 @@ export default function Home() {
                       boxShadow: studentAuthMode === "login" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
                     }}
                   >
-                    Đã có mã
+                    Đã có mã truy cập
                   </button>
                   <button
                     onClick={() => { setStudentAuthMode("signup"); setError(""); }}
@@ -1082,13 +1205,13 @@ export default function Home() {
               {studentAuthMode === "login" && (
                 <div>
                   <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
-                    Nhập mã sinh viên hoặc token định danh cá nhân đã được cấp để tiếp tục tiến độ thu âm.
+                    Nhập mã truy cập bí mật đã được cấp để tiếp tục tiến độ thu âm của bạn.
                   </p>
                   <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                    Mã sinh viên hoặc mã định danh:
+                    Mã truy cập bí mật:
                     <input
                       style={styles.field}
-                      placeholder="Ví dụ: SE194007"
+                      placeholder="Nhập mã truy cập bí mật (Access Token)"
                       value={studentIdentifierInput}
                       onChange={(e) => setStudentIdentifierInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleStudentLogin(); }}
@@ -1224,6 +1347,62 @@ export default function Home() {
       {/* ========================================================================= */}
       {role === "student" && (
         <>
+          {/* Student Account & Secret Access Token Card */}
+          <section style={styles.card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Khu vực tài khoản sinh viên
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#09090b", marginTop: 2 }}>
+                  Mã định danh: {participantInfo?.participant_code || "Học viên"}
+                </div>
+                <div style={{ fontSize: 12, color: "#71717a", marginTop: 4 }}>
+                  Phiên đăng nhập lưu tạm trong localStorage (không sử dụng HttpOnly cookie).
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Mã truy cập bí mật:</span>
+                <code
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    background: "#ffffff",
+                    border: "1px solid #cbd5e1",
+                    padding: "3px 8px",
+                    borderRadius: 4,
+                    color: "#0f172a"
+                  }}
+                >
+                  {maskSecretToken(token, showSecretToken)}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => setShowSecretToken(!showSecretToken)}
+                  style={{ ...styles.btnSecondary, padding: "4px 8px", fontSize: 12 }}
+                >
+                  {showSecretToken ? "Ẩn" : "Hiện"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (token && typeof navigator !== "undefined" && navigator.clipboard) {
+                      navigator.clipboard.writeText(token).then(() => {
+                        setCopiedToken(true);
+                        setTimeout(() => setCopiedToken(false), 2000);
+                      });
+                    }
+                  }}
+                  style={{ ...styles.btnSecondary, padding: "4px 8px", fontSize: 12 }}
+                >
+                  {copiedToken ? "Đã chép" : "Sao chép"}
+                </button>
+              </div>
+            </div>
+          </section>
+
           {/* Course Selector & Progress Banner */}
           <section style={styles.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
@@ -1231,7 +1410,7 @@ export default function Home() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Môn học / Gói câu hỏi:
                 </label>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
                   <select
                     style={{ ...styles.field, marginTop: 0, marginBottom: 0, minWidth: 260 }}
                     value={selectedCourse}
@@ -1250,10 +1429,19 @@ export default function Home() {
                   <button
                     style={styles.btnSecondary}
                     onClick={() => loadTasks(selectedCourse, token)}
-                    title="Tải lại danh sách"
+                    title="Tải lại danh sách câu hỏi"
                   >
                     <RefreshIcon size={13} />
-                    <span>Làm mới</span>
+                    <span>Làm mới câu hỏi</span>
+                  </button>
+                  <button
+                    style={styles.btnSecondary}
+                    onClick={refreshTasksSyncStatus}
+                    disabled={syncRefreshing || isRecording}
+                    title="Làm mới trạng thái đồng bộ mà không hủy bản thu âm đang ghi"
+                  >
+                    <RefreshIcon size={13} />
+                    <span>{syncRefreshing ? "Đang đồng bộ..." : "Cập nhật đồng bộ Drive"}</span>
                   </button>
                 </div>
               </div>
@@ -1278,14 +1466,48 @@ export default function Home() {
             <section style={{ ...styles.card, border: "1px solid #d4d4d8", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
               {/* Header: Question Index & Status */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f4f4f5", paddingBottom: 14, marginBottom: 20 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: "#09090b" }}>
                     Câu {currentIndex + 1} trên {tasks.length}
                   </span>
                   {currentTask.recording_id ? (
-                    <span style={{ fontSize: 12, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                      Đã ghi âm
-                    </span>
+                    <>
+                      <span style={{ fontSize: 12, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                        Đã ghi âm
+                      </span>
+                      {(() => {
+                        const syncInfo = getDriveSyncStatusInfo(currentTask.drive_sync_status, currentTask.drive_sync_message);
+                        return (
+                          <span
+                            title={syncInfo.description}
+                            style={{
+                              fontSize: 12,
+                              padding: "2px 8px",
+                              borderRadius: 4,
+                              fontWeight: 600,
+                              background:
+                                syncInfo.badgeStyle === "synced"
+                                  ? "#dcfce7"
+                                  : syncInfo.badgeStyle === "pending"
+                                  ? "#fef3c7"
+                                  : syncInfo.badgeStyle === "error"
+                                  ? "#fee2e2"
+                                  : "#f4f4f5",
+                              color:
+                                syncInfo.badgeStyle === "synced"
+                                  ? "#166534"
+                                  : syncInfo.badgeStyle === "pending"
+                                  ? "#92400e"
+                                  : syncInfo.badgeStyle === "error"
+                                  ? "#991b1b"
+                                  : "#71717a"
+                            }}
+                          >
+                            {syncInfo.label}
+                          </span>
+                        );
+                      })()}
+                    </>
                   ) : (
                     <span style={{ fontSize: 12, background: "#f4f4f5", color: "#71717a", padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>
                       Chưa ghi âm
@@ -1457,6 +1679,14 @@ export default function Home() {
       {/* ========================================================================= */}
       {role === "admin" && (
         <>
+          {/* Google Drive Status & Connection Panel */}
+          <AdminDrivePanel
+            apiBase={API}
+            adminToken={adminKey}
+            driveStatus={driveStatus}
+            onStatusUpdated={(s) => setDriveStatus(s)}
+          />
+
           {/* Admin Navigation Bar */}
           <section style={styles.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -1532,6 +1762,7 @@ export default function Home() {
                 onClick={() => {
                   loadAdminStats();
                   loadAdminCourses();
+                  loadDriveStatus();
                   if (adminSubTab === "reviews") loadReviews();
                 }}
               >
@@ -1734,12 +1965,13 @@ export default function Home() {
                         {renderHighlightedText(r.text, r.target_terms)}
                       </p>
 
-                      {/* Clean Audio Stream Player */}
+                      {/* Header-authenticated Blob Audio Stream Player */}
                       <div style={{ background: "#ffffff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0", marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                        <audio
-                          controls
-                          src={`${API}/api/v1/admin/recordings/${r.id}/audio?key=${encodeURIComponent(adminKey)}`}
-                          style={{ flex: 1, minWidth: 260, height: 36 }}
+                        <AuthenticatedAudioPlayer
+                          apiBase={API}
+                          audioPath={`/api/v1/admin/recordings/${r.id}/audio`}
+                          authHeader={{ name: "x-admin-key", value: adminKey }}
+                          style={{ flex: 1, minWidth: 260 }}
                         />
                         <span style={{ fontSize: 12, color: "#71717a", fontFamily: "ui-monospace, monospace" }}>
                           {r.duration_seconds > 0 ? `${r.duration_seconds.toFixed(1)}s` : ""} · {r.format.toUpperCase()}
@@ -1807,50 +2039,68 @@ export default function Home() {
               </p>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-                <a
-                  href={`${API}/api/v1/admin/export/manifest.json?key=${encodeURIComponent(adminKey)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ textDecoration: "none" }}
+                <button
+                  type="button"
+                  onClick={() => handleExportDownload("/api/v1/admin/export/manifest.json", "manifest.json")}
+                  disabled={busy}
+                  style={{
+                    background: "#ffffff",
+                    padding: 18,
+                    borderRadius: 8,
+                    border: "1px solid #e4e4e7",
+                    textAlign: "left",
+                    cursor: busy ? "wait" : "pointer",
+                    width: "100%"
+                  }}
                 >
-                  <div style={{ background: "#ffffff", padding: 18, borderRadius: 8, border: "1px solid #e4e4e7", textAlign: "left", cursor: "pointer", transition: "border 0.15s" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <DownloadIcon size={15} />
-                      <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest JSON</strong>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#71717a" }}>Metadata cấu trúc JSON đầy đủ</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <DownloadIcon size={15} />
+                    <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest JSON</strong>
                   </div>
-                </a>
+                  <div style={{ fontSize: 12, color: "#71717a" }}>Metadata cấu trúc JSON (Header-auth)</div>
+                </button>
 
-                <a
-                  href={`${API}/api/v1/admin/export/manifest.csv?key=${encodeURIComponent(adminKey)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ textDecoration: "none" }}
+                <button
+                  type="button"
+                  onClick={() => handleExportDownload("/api/v1/admin/export/manifest.csv", "manifest.csv")}
+                  disabled={busy}
+                  style={{
+                    background: "#ffffff",
+                    padding: 18,
+                    borderRadius: 8,
+                    border: "1px solid #e4e4e7",
+                    textAlign: "left",
+                    cursor: busy ? "wait" : "pointer",
+                    width: "100%"
+                  }}
                 >
-                  <div style={{ background: "#ffffff", padding: 18, borderRadius: 8, border: "1px solid #e4e4e7", textAlign: "left", cursor: "pointer", transition: "border 0.15s" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <DownloadIcon size={15} />
-                      <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest CSV</strong>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#71717a" }}>Bảng tính Excel / Google Sheets</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <DownloadIcon size={15} />
+                    <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest CSV</strong>
                   </div>
-                </a>
+                  <div style={{ fontSize: 12, color: "#71717a" }}>Bảng tính Excel / CSV (Header-auth)</div>
+                </button>
 
-                <a
-                  href={`${API}/api/v1/admin/export/archive.zip?key=${encodeURIComponent(adminKey)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ textDecoration: "none" }}
+                <button
+                  type="button"
+                  onClick={() => handleExportDownload("/api/v1/admin/export/archive.zip", "archive.zip")}
+                  disabled={busy}
+                  style={{
+                    background: "#09090b",
+                    padding: 18,
+                    borderRadius: 8,
+                    border: "1px solid #09090b",
+                    textAlign: "left",
+                    cursor: busy ? "wait" : "pointer",
+                    width: "100%"
+                  }}
                 >
-                  <div style={{ background: "#09090b", padding: 18, borderRadius: 8, border: "1px solid #09090b", textAlign: "left", cursor: "pointer" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <DownloadIcon size={15} />
-                      <strong style={{ color: "#ffffff", fontSize: 14 }}>Trọn gói ZIP</strong>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#a1a1aa" }}>Tất cả audio và manifests</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <DownloadIcon size={15} color="#ffffff" />
+                    <strong style={{ color: "#ffffff", fontSize: 14 }}>Trọn gói ZIP</strong>
                   </div>
-                </a>
+                  <div style={{ fontSize: 12, color: "#a1a1aa" }}>Tất cả audio và manifests (Header-auth)</div>
+                </button>
               </div>
             </section>
           )}

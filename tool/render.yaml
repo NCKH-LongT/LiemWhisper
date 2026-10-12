@@ -1,0 +1,44 @@
+# Select tool/render.yaml as the Blueprint path in Render.
+# Paid service + database. Review pricing before creating resources.
+databases:
+  - name: liemwhisper-db
+    databaseName: liemwhisper
+    user: liemwhisper
+    region: singapore
+    plan: starter
+
+services:
+  - type: web
+    name: liemwhisper-api
+    runtime: python
+    branch: main
+    region: singapore
+    plan: starter
+    rootDir: tool
+    buildCommand: python -m pip install -r backend/requirements.txt
+    startCommand: python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DATABASE_URL
+        fromDatabase:
+          name: liemwhisper-db
+          property: connectionString
+      - key: STORAGE_BACKEND
+        value: sql_drive
+      - key: MAX_AUDIO_BYTES
+        value: "15000000"
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: WEB_PUBLIC_URL
+        sync: false

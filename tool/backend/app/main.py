@@ -2,6 +2,7 @@
 
 Supports multi-format audio (WebM, MP4/AAC, WAV, OGG), range-request streaming,
 bulk prompt import, reviewer studio, real-time stats, and export manifest/archive.
+Full audio in SQL and durable Google Drive sync via outbox architecture.
 """
 import csv
 import hashlib
@@ -10,11 +11,9 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import time
 import uuid
 import zipfile
-from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Query, UploadFile
@@ -22,19 +21,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-DEFAULT_DATA_ROOT = PROJECT_ROOT / "private-data"
-ROOT = Path(os.getenv("DATA_ROOT", str(DEFAULT_DATA_ROOT))).resolve()
-DB = ROOT / "collection.sqlite3"
+from app.database import db, get_data_root, init_db
+from app.auth import (
+    admin_login,
+    participant_login,
+    require_admin,
+    revoke_admin,
+    setup_auth,
+)
+from app.drive import register_drive_routes
+from app.storage import (
+    get_audio_bytes,
+    store_audio_bytes,
+    stream_audio_response,
+    validate_storage_backend,
+)
+from app.worker import enqueue_delete_job
+
+ROOT = get_data_root()
 STORAGE = os.getenv("STORAGE_BACKEND", "local")
 MAX_BYTES = int(os.getenv("MAX_AUDIO_BYTES", "15000000"))  # 15MB limit
 ADMIN_KEY = os.getenv("ADMIN_API_KEY", "liemwhisper-admin-secret-2026")
 ORIGINS_ENV = os.getenv("WEB_PUBLIC_URL", "*")
 ALLOWED_ORIGINS = [o.strip() for o in ORIGINS_ENV.split(",") if o.strip()] or ["*"]
 
-ROOT.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR = ROOT / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+init_db()
+setup_auth(db)
 
 app = FastAPI(title="LiemWhisper Collection API", version="1.0.0")
 app.add_middleware(
@@ -45,110 +60,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@contextmanager
-def db():
-    conn = sqlite3.connect(DB, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA journal_mode=WAL")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
-def init_db():
-    with db() as c:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS courses(
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            created_at INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS prompts(
-            id TEXT PRIMARY KEY,
-            course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-            text TEXT NOT NULL,
-            language TEXT NOT NULL DEFAULT 'vi-en',
-            target_terms TEXT DEFAULT '[]',
-            difficulty TEXT DEFAULT 'normal',
-            category TEXT DEFAULT '',
-            published INTEGER NOT NULL DEFAULT 0,
-            created_at INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS participants(
-            id TEXT PRIMARY KEY,
-            token_hash TEXT NOT NULL UNIQUE,
-            participant_code TEXT DEFAULT '',
-            consent_version TEXT NOT NULL,
-            consent_at INTEGER NOT NULL,
-            survey TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS recordings(
-            id TEXT PRIMARY KEY,
-            participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
-            prompt_id TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
-            storage_key TEXT NOT NULL,
-            sha256 TEXT NOT NULL,
-            mime TEXT NOT NULL,
-            bytes INTEGER NOT NULL,
-            duration_seconds REAL DEFAULT 0.0,
-            format TEXT DEFAULT 'webm',
-            status TEXT NOT NULL DEFAULT 'pending_review',
-            transcript TEXT,
-            reviewer_notes TEXT DEFAULT '',
-            reviewed_at INTEGER DEFAULT 0,
-            created_at INTEGER NOT NULL,
-            UNIQUE(participant_id, prompt_id)
-        );
-        """)
-        # Safe migrations for existing DB schemas
-        existing_prompts_cols = [r[1] for r in c.execute("PRAGMA table_info(prompts)").fetchall()]
-        if "target_terms" not in existing_prompts_cols:
-            c.execute("ALTER TABLE prompts ADD COLUMN target_terms TEXT DEFAULT '[]'")
-        if "difficulty" not in existing_prompts_cols:
-            c.execute("ALTER TABLE prompts ADD COLUMN difficulty TEXT DEFAULT 'normal'")
-        if "category" not in existing_prompts_cols:
-            c.execute("ALTER TABLE prompts ADD COLUMN category TEXT DEFAULT ''")
-        if "created_at" not in existing_prompts_cols:
-            c.execute("ALTER TABLE prompts ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
-
-        existing_part_cols = [r[1] for r in c.execute("PRAGMA table_info(participants)").fetchall()]
-        if "participant_code" not in existing_part_cols:
-            c.execute("ALTER TABLE participants ADD COLUMN participant_code TEXT DEFAULT ''")
-
-        existing_rec_cols = [r[1] for r in c.execute("PRAGMA table_info(recordings)").fetchall()]
-        if "duration_seconds" not in existing_rec_cols:
-            c.execute("ALTER TABLE recordings ADD COLUMN duration_seconds REAL DEFAULT 0.0")
-        if "format" not in existing_rec_cols:
-            c.execute("ALTER TABLE recordings ADD COLUMN format TEXT DEFAULT 'webm'")
-        if "reviewer_notes" not in existing_rec_cols:
-            c.execute("ALTER TABLE recordings ADD COLUMN reviewer_notes TEXT DEFAULT ''")
-        if "reviewed_at" not in existing_rec_cols:
-            c.execute("ALTER TABLE recordings ADD COLUMN reviewed_at INTEGER DEFAULT 0")
-
-init_db()
 
 def admin(x_admin_key: str | None = None, key: str | None = None):
     supplied = x_admin_key or key
-    if not ADMIN_KEY or not supplied or not secrets.compare_digest(ADMIN_KEY, supplied):
+    if not supplied:
         raise HTTPException(403, "Admin credential required")
+    try:
+        require_admin(db, supplied)
+        return
+    except HTTPException:
+        pass
+    if ADMIN_KEY and secrets.compare_digest(ADMIN_KEY, supplied):
+        return
+    raise HTTPException(403, "Admin credential required")
+
+
+register_drive_routes(app, db, admin)
+
 
 def participant(x_participant_token: str | None = None, token: str | None = None):
     supplied = x_participant_token or token
     if not supplied:
         raise HTTPException(401, "Participant token required")
-    supplied_clean = supplied.strip()
-    h = hashlib.sha256(supplied_clean.encode()).hexdigest()
-    with db() as c:
-        row = c.execute(
-            "SELECT id, participant_code FROM participants WHERE token_hash=? OR (participant_code != '' AND LOWER(participant_code)=LOWER(?))",
-            (h, supplied_clean)
-        ).fetchone()
-    if not row:
-        raise HTTPException(401, "Invalid participant token")
+    row = participant_login(db, supplied)
     return row["id"]
+
 
 def detect_audio_format(body: bytes, content_type: str) -> tuple[str, str]:
     """Detect file extension and normalized mime type across WebM, MP4, WAV, OGG."""
@@ -170,35 +106,6 @@ def detect_audio_format(body: bytes, content_type: str) -> tuple[str, str]:
         return "webm", ct
     return "webm", "audio/webm"
 
-def store_audio(recording_id: str, body: bytes, ext: str, mime: str) -> str:
-    if STORAGE == "drive":
-        folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-        if not folder:
-            raise HTTPException(503, "Drive folder not configured")
-        try:
-            from googleapiclient.discovery import build
-            from googleapiclient.http import MediaIoBaseUpload
-            from google.auth import default
-            creds, _ = default(scopes=["https://www.googleapis.com/auth/drive.file"])
-            drive = build("drive", "v3", credentials=creds, cache_discovery=False)
-            media = MediaIoBaseUpload(io.BytesIO(body), mimetype=mime, resumable=False)
-            obj = drive.files().create(
-                body={"name": f"{recording_id}.{ext}", "parents": [folder]},
-                media_body=media,
-                fields="id",
-                supportsAllDrives=True
-            ).execute()
-            return obj["id"]
-        except Exception as exc:
-            raise HTTPException(503, "Private Drive upload failed") from exc
-
-    if STORAGE != "local":
-        raise HTTPException(503, "Unsupported storage backend")
-
-    filename = f"{recording_id}.{ext}"
-    path = AUDIO_DIR / filename
-    path.write_bytes(body)
-    return str(path)
 
 def extract_potential_english_terms(text: str) -> list[str]:
     """Extract English technical words/phrases to highlight or tag."""
@@ -212,6 +119,7 @@ def extract_potential_english_terms(text: str) -> list[str]:
             terms.append(word)
     seen = set()
     return [t for t in terms if not (t.lower() in seen or seen.add(t.lower()))]
+
 
 # ----------------- Input / Output Models -----------------
 
@@ -260,38 +168,57 @@ class StudentLoginInput(BaseModel):
 @app.post("/api/v1/auth/admin-login")
 def auth_admin_login(data: AdminLoginInput):
     k = data.key.strip()
-    if not ADMIN_KEY or not secrets.compare_digest(ADMIN_KEY, k):
+    try:
+        session_token = admin_login(db, k, ADMIN_KEY)
+        return {
+            "success": True,
+            "role": "admin",
+            "token": session_token,
+            "message": "Đăng nhập quản trị thành công."
+        }
+    except ValueError:
+        if ADMIN_KEY and secrets.compare_digest(ADMIN_KEY, k):
+            return {
+                "success": True,
+                "role": "admin",
+                "token": ADMIN_KEY,
+                "message": "Đăng nhập quản trị thành công."
+            }
         raise HTTPException(401, "Mật khẩu quản trị (Admin Key) không chính xác.")
-    return {
-        "success": True,
-        "role": "admin",
-        "token": ADMIN_KEY,
-        "message": "Đăng nhập quản trị thành công."
-    }
+
+@app.post("/api/v1/auth/admin-logout")
+def auth_admin_logout(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
+    supplied = x_admin_key or key
+    if supplied:
+        revoke_admin(db, supplied)
+    return {"success": True, "message": "Đã đăng xuất thành công."}
 
 @app.post("/api/v1/auth/student-login")
 def auth_student_login(data: StudentLoginInput):
     ident = data.identifier.strip()
-    h = hashlib.sha256(ident.encode()).hexdigest()
-    with db() as c:
-        row = c.execute(
-            """SELECT id, participant_code, consent_version, consent_at, survey
-               FROM participants
-               WHERE token_hash=? OR (participant_code != '' AND LOWER(participant_code)=LOWER(?))""",
-            (h, ident)
-        ).fetchone()
-    if not row:
+    try:
+        row = participant_login(db, ident)
+        survey = json.loads(row["survey"]) if row.get("survey") else {}
+        return {
+            "success": True,
+            "role": "student",
+            "participant_id": row["id"],
+            "participant_code": row["participant_code"],
+            "token": ident,
+            "survey": survey
+        }
+    except HTTPException:
+        with db() as c:
+            code_match = c.execute(
+                "SELECT 1 FROM participants WHERE participant_code != '' AND LOWER(participant_code)=LOWER(?)",
+                (ident,)
+            ).fetchone()
+        if code_match:
+            raise HTTPException(
+                401,
+                "Vui lòng nhập Mã truy cập bí mật (token) được cấp khi đăng ký, không phải mã sinh viên hiển thị."
+            )
         raise HTTPException(404, "Không tìm thấy tài khoản với mã này. Vui lòng kiểm tra lại hoặc đăng ký mới.")
-
-    survey = json.loads(row["survey"]) if row["survey"] else {}
-    return {
-        "success": True,
-        "role": "student",
-        "participant_id": row["id"],
-        "participant_code": row["participant_code"],
-        "token": ident,
-        "survey": survey
-    }
 
 # ----------------- Health & Capabilities -----------------
 
@@ -308,7 +235,7 @@ def health():
 def capabilities():
     return {
         "recording_upload_enabled": True,
-        "google_drive_enabled": STORAGE == "drive",
+        "google_drive_enabled": STORAGE == "sql_drive",
         "supported_audio_formats": ["audio/webm", "audio/mp4", "audio/wav", "audio/ogg"],
         "version": "1.0.0"
     }
@@ -483,12 +410,13 @@ def participant_me(x_participant_token: str | None = Header(None), token: str | 
 
 @app.post("/api/v1/participants/withdraw")
 def participant_withdraw(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
-    """Withdraw research consent and delete all recordings."""
+    """Withdraw research consent and delete all recordings. Persists deletion tombstones for Drive."""
     pid = participant(x_participant_token, token)
     deleted_files = 0
     with db() as c:
-        rows = c.execute("SELECT storage_key FROM recordings WHERE participant_id=?", (pid,)).fetchall()
+        rows = c.execute("SELECT id, storage_key, drive_file_id FROM recordings WHERE participant_id=?", (pid,)).fetchall()
         for r in rows:
+            rec_id = r["id"]
             key = r["storage_key"]
             if key and STORAGE == "local":
                 p = Path(key)
@@ -498,6 +426,9 @@ def participant_withdraw(x_participant_token: str | None = Header(None), token: 
                         deleted_files += 1
                     except Exception:
                         pass
+            if STORAGE == "sql_drive" or r["drive_file_id"]:
+                enqueue_delete_job(c, rec_id, r["drive_file_id"])
+            c.execute("DELETE FROM recording_audio WHERE recording_id=?", (rec_id,))
         c.execute("DELETE FROM recordings WHERE participant_id=?", (pid,))
         c.execute("DELETE FROM participants WHERE id=?", (pid,))
     return {"withdrawn": True, "deleted_recordings": len(rows), "deleted_files": deleted_files}
@@ -508,11 +439,11 @@ def tasks(course_id: str, x_participant_token: str | None = Header(None), token:
     with db() as c:
         rows = c.execute("""
             SELECT p.id, p.text, p.language, p.target_terms, p.difficulty, p.category,
-                   r.id AS recording_id, r.status, r.duration_seconds
+                   r.id AS recording_id, r.status, r.duration_seconds, r.drive_sync_status
             FROM prompts p
             LEFT JOIN recordings r ON r.prompt_id = p.id AND r.participant_id = ?
             WHERE p.course_id = ? AND p.published = 1
-            ORDER BY p.rowid ASC
+            ORDER BY p.created_at ASC, p.id ASC
         """, (pid, course_id)).fetchall()
         tasks_list = []
         for r in rows:
@@ -532,6 +463,7 @@ async def upload_recording(
     x_participant_token: str | None = Header(None),
     token: str | None = Query(None)
 ):
+    validate_storage_backend(STORAGE)
     pid = participant(x_participant_token, token)
     with db() as c:
         if not c.execute("SELECT 1 FROM prompts WHERE id=? AND published=1", (prompt_id,)).fetchone():
@@ -547,19 +479,23 @@ async def upload_recording(
 
     ext, norm_mime = detect_audio_format(body, audio.content_type)
     rec_id = str(uuid.uuid4())
-    storage_key = store_audio(rec_id, body, ext, norm_mime)
     now = int(time.time())
     file_sha256 = hashlib.sha256(body).hexdigest()
+    initial_sync_status = "pending" if STORAGE == "sql_drive" else "disabled"
 
     with db() as c:
         try:
+            storage_key = store_audio_bytes(rec_id, body, ext, norm_mime, STORAGE, c, AUDIO_DIR)
             c.execute("""
                 INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
-                                       duration_seconds, format, status, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,'pending_review',?)
-            """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now))
-        except sqlite3.IntegrityError as exc:
-            raise HTTPException(409, "Bạn đã nộp bản ghi cho câu này rồi") from exc
+                                       duration_seconds, format, status, created_at, drive_sync_status)
+                VALUES (?,?,?,?,?,?,?,?,?,'pending_review',?,?)
+            """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status))
+        except Exception as exc:
+            msg = str(exc)
+            if "UNIQUE" in msg.upper() or "INTEGRITY" in msg.upper():
+                raise HTTPException(409, "Bạn đã nộp bản ghi cho câu này rồi") from exc
+            raise
 
     return {
         "recording_id": rec_id,
@@ -567,6 +503,7 @@ async def upload_recording(
         "bytes": len(body),
         "duration_seconds": duration,
         "status": "pending_review",
+        "drive_sync_status": initial_sync_status,
         "message": "Nộp bản ghi thành công"
     }
 
@@ -575,50 +512,62 @@ async def upload_recording(
 @app.get("/api/v1/admin/recordings/{recording_id}/audio")
 def admin_audio_stream(
     recording_id: str,
+    range: str | None = Header(None),
     x_admin_key: str | None = Header(None),
     key: str | None = Query(None)
 ):
     admin(x_admin_key, key)
     with db() as c:
         r = c.execute("SELECT storage_key, mime, format FROM recordings WHERE id=?", (recording_id,)).fetchone()
-    if not r:
-        raise HTTPException(404, "Recording not found")
+        if not r:
+            raise HTTPException(404, "Recording not found")
 
-    if STORAGE == "local":
-        path = Path(r["storage_key"]).resolve()
-        if not path.is_file() or not path.is_relative_to(AUDIO_DIR.resolve()):
-            raise HTTPException(404, "Audio file missing on disk")
-        return FileResponse(
-            path,
-            media_type=r["mime"],
-            filename=path.name,
-            content_disposition_type="inline"
-        )
-    raise HTTPException(501, "Drive review streaming not implemented directly")
+        if STORAGE == "local":
+            path = Path(r["storage_key"]).resolve()
+            if not path.is_file() or not path.is_relative_to(AUDIO_DIR.resolve()):
+                raise HTTPException(404, "Audio file missing on disk")
+            return FileResponse(
+                path,
+                media_type=r["mime"],
+                filename=path.name,
+                content_disposition_type="inline"
+            )
+
+        try:
+            body = get_audio_bytes(recording_id, r["storage_key"], STORAGE, c)
+        except FileNotFoundError:
+            raise HTTPException(404, "Audio file missing")
+        return stream_audio_response(body, r["mime"], range_header=range)
 
 @app.get("/api/v1/recordings/{recording_id}/audio")
 def participant_audio_stream(
     recording_id: str,
+    range: str | None = Header(None),
     x_participant_token: str | None = Header(None),
     token: str | None = Query(None)
 ):
     pid = participant(x_participant_token, token)
     with db() as c:
         r = c.execute("SELECT storage_key, mime FROM recordings WHERE id=? AND participant_id=?", (recording_id, pid)).fetchone()
-    if not r:
-        raise HTTPException(404, "Recording not found")
+        if not r:
+            raise HTTPException(404, "Recording not found")
 
-    if STORAGE == "local":
-        path = Path(r["storage_key"]).resolve()
-        if not path.is_file():
+        if STORAGE == "local":
+            path = Path(r["storage_key"]).resolve()
+            if not path.is_file():
+                raise HTTPException(404, "Audio file missing")
+            return FileResponse(
+                path,
+                media_type=r["mime"],
+                filename=path.name,
+                content_disposition_type="inline"
+            )
+
+        try:
+            body = get_audio_bytes(recording_id, r["storage_key"], STORAGE, c)
+        except FileNotFoundError:
             raise HTTPException(404, "Audio file missing")
-        return FileResponse(
-            path,
-            media_type=r["mime"],
-            filename=path.name,
-            content_disposition_type="inline"
-        )
-    raise HTTPException(501, "Audio streaming backend unsupported")
+        return stream_audio_response(body, r["mime"], range_header=range)
 
 # ----------------- Admin Review Studio -----------------
 
@@ -634,7 +583,8 @@ def admin_recordings_queue(
     query = """
         SELECT r.id, r.prompt_id, p.text, p.target_terms, p.language, c.title AS course_title,
                part.participant_code, r.status, r.transcript, r.reviewer_notes,
-               r.duration_seconds, r.bytes, r.mime, r.format, r.created_at, r.reviewed_at
+               r.duration_seconds, r.bytes, r.mime, r.format, r.created_at, r.reviewed_at,
+               r.drive_sync_status, r.drive_file_id
         FROM recordings r
         JOIN prompts p ON p.id = r.prompt_id
         JOIN courses c ON c.id = p.course_id
@@ -682,9 +632,11 @@ def review_recording(
             SET status=?, transcript=?, reviewer_notes=?, reviewed_at=?
             WHERE id=?
         """, (target_status, data.transcript, data.notes, now, recording_id)).rowcount
-    if not n:
-        raise HTTPException(404, "Recording not found")
-    return {"status": target_status, "recording_id": recording_id}
+        if not n:
+            raise HTTPException(404, "Recording not found")
+        row = c.execute("SELECT drive_sync_status FROM recordings WHERE id=?", (recording_id,)).fetchone()
+    drive_sync = row["drive_sync_status"] if row else None
+    return {"status": target_status, "recording_id": recording_id, "drive_sync_status": drive_sync}
 
 # ----------------- Admin Analytics & Stats -----------------
 
@@ -692,19 +644,30 @@ def review_recording(
 def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
     admin(x_admin_key, key)
     with db() as c:
-        courses_count = c.execute("SELECT COUNT(*) FROM courses").fetchone()[0]
-        prompts_total = c.execute("SELECT COUNT(*) FROM prompts").fetchone()[0]
-        prompts_published = c.execute("SELECT COUNT(*) FROM prompts WHERE published=1").fetchone()[0]
-        part_count = c.execute("SELECT COUNT(*) FROM participants").fetchone()[0]
+        courses_row = c.execute("SELECT COUNT(*) FROM courses").fetchone()
+        courses_count = courses_row[0] if courses_row else 0
+        prompts_total_row = c.execute("SELECT COUNT(*) FROM prompts").fetchone()
+        prompts_total = prompts_total_row[0] if prompts_total_row else 0
+        prompts_pub_row = c.execute("SELECT COUNT(*) FROM prompts WHERE published=1").fetchone()
+        prompts_published = prompts_pub_row[0] if prompts_pub_row else 0
+        part_row = c.execute("SELECT COUNT(*) FROM participants").fetchone()
+        part_count = part_row[0] if part_row else 0
 
-        recs_total = c.execute("SELECT COUNT(*) FROM recordings").fetchone()[0]
-        recs_approved = c.execute("SELECT COUNT(*) FROM recordings WHERE status='approved'").fetchone()[0]
-        recs_rejected = c.execute("SELECT COUNT(*) FROM recordings WHERE status='rejected'").fetchone()[0]
-        recs_rerecord = c.execute("SELECT COUNT(*) FROM recordings WHERE status='rerecord'").fetchone()[0]
-        recs_pending = c.execute("SELECT COUNT(*) FROM recordings WHERE status='pending_review'").fetchone()[0]
+        recs_total_row = c.execute("SELECT COUNT(*) FROM recordings").fetchone()
+        recs_total = recs_total_row[0] if recs_total_row else 0
+        recs_app_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='approved'").fetchone()
+        recs_approved = recs_app_row[0] if recs_app_row else 0
+        recs_rej_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='rejected'").fetchone()
+        recs_rejected = recs_rej_row[0] if recs_rej_row else 0
+        recs_rer_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='rerecord'").fetchone()
+        recs_rerecord = recs_rer_row[0] if recs_rer_row else 0
+        recs_pen_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='pending_review'").fetchone()
+        recs_pending = recs_pen_row[0] if recs_pen_row else 0
 
-        approved_duration = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings WHERE status='approved'").fetchone()[0]
-        total_duration = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings").fetchone()[0]
+        app_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings WHERE status='approved'").fetchone()
+        approved_duration = app_dur_row[0] if app_dur_row else 0
+        tot_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings").fetchone()
+        total_duration = tot_dur_row[0] if tot_dur_row else 0
 
         course_breakdown = c.execute("""
             SELECT c.id, c.title,
@@ -736,6 +699,7 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
 # ----------------- Export Dataset Manifest & ZIP -----------------
 
 def get_approved_dataset_rows():
+    """Returns approved recordings. In sql_drive mode, restricts export strictly to verified synced files."""
     with db() as c:
         return c.execute("""
             SELECT r.id as recording_id, r.participant_id, part.participant_code,
@@ -745,14 +709,16 @@ def get_approved_dataset_rows():
                    p.target_terms, p.language, p.difficulty, p.category,
                    r.duration_seconds, r.bytes, r.mime, r.format, r.sha256,
                    r.storage_key, r.created_at, r.reviewed_at,
+                   r.drive_sync_status, r.drive_file_id,
                    part.survey
             FROM recordings r
             JOIN prompts p ON p.id = r.prompt_id
             JOIN courses c ON c.id = p.course_id
             JOIN participants part ON part.id = r.participant_id
             WHERE r.status = 'approved'
+              AND (? != 'sql_drive' OR r.drive_sync_status = 'synced')
             ORDER BY r.created_at ASC
-        """).fetchall()
+        """, (STORAGE,)).fetchall()
 
 @app.get("/api/v1/admin/export/manifest.json")
 def export_manifest_json(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
@@ -845,12 +811,21 @@ def export_archive_zip(x_admin_key: str | None = Header(None), key: str | None =
             ])
         zf.writestr("manifest.csv", csv_buf.getvalue())
 
-        for r in rows:
-            storage_key = r["storage_key"]
-            if storage_key and STORAGE == "local":
-                p = Path(storage_key)
-                if p.is_file():
-                    zf.write(p, arcname=f"audio/{r['recording_id']}.{r['format']}")
+        with db() as c:
+            for r in rows:
+                rec_id = r["recording_id"]
+                fmt = r["format"]
+                if STORAGE == "local":
+                    storage_key = r["storage_key"]
+                    if storage_key:
+                        p = Path(storage_key)
+                        if p.is_file():
+                            zf.write(p, arcname=f"audio/{rec_id}.{fmt}")
+                elif STORAGE in ("sql", "sql_drive"):
+                    audio_row = c.execute("SELECT body FROM recording_audio WHERE recording_id=?", (rec_id,)).fetchone()
+                    if not audio_row or audio_row[0] is None:
+                        raise HTTPException(500, f"Audio data missing in database for recording {rec_id}")
+                    zf.writestr(f"audio/{rec_id}.{fmt}", bytes(audio_row[0]))
 
     zip_buffer.seek(0)
     return Response(

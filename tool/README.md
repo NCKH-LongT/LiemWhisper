@@ -33,6 +33,10 @@ Mã nguồn, Docker Compose, cấu hình mẫu và script nạp câu hỏi nằm
 
 Dữ liệu đang có được giữ nguyên ở `private-data/` tại gốc repository để không làm hỏng đường dẫn âm thanh đã lưu trong SQLite. Thư mục `web/private-data/` cũ cũng được giữ nguyên, không xóa hay ghi đè. `research/`, `paper/`, `docs/` và `todo.md` là tài liệu/nghiên cứu chung, không chuyển vào tool.
 
+## Deploy Vercel + Render
+
+Xem [DEPLOYMENT.md](DEPLOYMENT.md) để cấu hình frontend Vercel và backend Render có persistent disk. Blueprint nằm tại `tool/render.yaml`; cấu hình Vercel tại `tool/client/vercel.json`. Render Starter + disk có phí. Chỉ triển khai thử nghiệm cho đến khi hoàn thành các yêu cầu bảo mật trong hướng dẫn.
+
 ## Hướng dẫn Khởi chạy
 
 ### 1. Khởi chạy bằng Docker Compose (Khuyên dùng)
