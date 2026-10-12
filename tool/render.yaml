@@ -1,11 +1,11 @@
-# Select tool/render.yaml as the Blueprint path in Render.
-# Paid service + database. Review pricing before creating resources.
+# Free tier configuration ($0/month, no credit card required)
 databases:
   - name: liemwhisper-db
     databaseName: liemwhisper
     user: liemwhisper
     region: singapore
-    plan: starter
+    plan: free
+    ipAllowList: []
 
 services:
   - type: web
@@ -13,7 +13,7 @@ services:
     runtime: python
     branch: main
     region: singapore
-    plan: starter
+    plan: free
     rootDir: tool
     buildCommand: python -m pip install -r backend/requirements.txt
     startCommand: python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
