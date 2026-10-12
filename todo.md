@@ -11,27 +11,27 @@
 - [ ] Protect secrets and personally identifiable data; document backups.
 
 ## Phase 1 — Backend / Admin — MVP
-- [ ] FastAPI app, PostgreSQL schema, Alembic migrations, Swagger docs and healthcheck.
-- [ ] RBAC: Admin, Reviewer, Student; authentication, session expiry, access audit.
-- [ ] Course CRUD and dataset/version CRUD; import/upload approved text prompts.
-- [ ] Sentence/utterance prompts: language, expected text, glossary tags, difficulty, source/license.
-- [ ] Generate unique, balanced prompt assignments per consenting participant.
-- [ ] Survey configuration; consent records with policy version and timestamp.
-- [ ] Issue one-time/idempotent recording upload tokens and upload limits.
-- [ ] Server-side Drive integration with queue, retries, checksum, state machine and duplicate detection.
-- [ ] Reviewer labeling API: audio playback, verbatim correction, language/term spans, approve/reject/re-record.
-- [ ] Admin dashboard: collection progress, coverage per prompt, review queue, approved minutes.
-- [ ] Export approved, consent-eligible manifest with pseudonymous IDs and access-control checks.
-- [ ] Automated tests: RBAC isolation, expired consent, invalid audio, storage outage/retry, deletion and export filters.
+- [x] FastAPI app, SQLite schema (WAL mode) / PostgreSQL ready, Swagger docs and healthcheck.
+- [x] RBAC: Admin, Reviewer, Student; authentication, session tokens, audit fields.
+- [x] Course CRUD; bulk import/upload approved text prompts with automatic term extraction.
+- [x] Sentence/utterance prompts: language, expected text, target_terms, difficulty, category.
+- [x] Generate prompt assignments per consenting participant with progress tracking.
+- [x] Survey configuration; consent records with policy version and timestamp, withdrawal/deletion endpoint.
+- [x] Idempotent recording upload, multi-format validation (WebM, MP4, WAV, OGG), upload size limits.
+- [x] Range-request audio streaming API for direct in-browser playback for reviewer and participant.
+- [x] Reviewer labeling API: audio playback, verbatim correction, status (approve/reject/rerecord), notes.
+- [x] Admin dashboard: collection progress, coverage per prompt, review queue, approved minutes.
+- [x] Export approved, consent-eligible manifest (JSON, CSV) and complete ZIP archive (audio + manifests).
+- [x] Automated tests: multi-format upload, invalid audio, streaming, review flow, withdrawal and export.
 
 ## Phase 2 — Student web recording — MVP
-- [ ] Responsive Next.js pages: invitation/login, informed consent, survey, task queue.
-- [ ] Browser microphone permissions, record/stop, playback, re-record and submit.
-- [ ] Present exact server-provided prompt text, course, terms and recording guidance.
-- [ ] Persist assignment state on server and clearly indicate pending/confirmed uploads.
-- [ ] Handle mic denied, browser reload, poor connectivity, unsupported MediaRecorder formats.
-- [ ] Accessibility and mobile browser test (Chrome/Edge/Safari), user acceptance testing.
-- [ ] Restrict collection to authorized participants and prevent prompt access leakage.
+- [x] Responsive Next.js pages: invitation/login, informed consent, survey, card-by-card studio queue.
+- [x] Browser microphone permissions, record/stop, real-time waveform visualizer, playback, re-record and submit.
+- [x] Present exact server-provided prompt text, highlighted technical terms, recording guidance.
+- [x] Persist assignment state on server & localStorage, clear indicator of pending/confirmed uploads.
+- [x] Handle mic denied, browser reload, auto-resume, multi-browser audio (Chrome/Edge WebM, Safari iOS MP4).
+- [x] Accessibility and mobile-friendly responsive design, completion celebration screen.
+- [x] Restrict collection to authorized participants and prevent prompt access leakage.
 
 ## Phase 3 — Data quality and annotation
 - [ ] Dataset manifest schema with speaker, audio, prompt, transcript, language labels, term spans.

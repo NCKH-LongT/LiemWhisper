@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./web/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_ROOT=/data
+      - STORAGE_BACKEND=local
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-liemwhisper-admin-secret-2026}
+      - WEB_PUBLIC_URL=${WEB_PUBLIC_URL:-*}
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./web/client
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    restart: unless-stopped
