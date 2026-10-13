@@ -7,7 +7,10 @@ import {
   sanitizeApiError,
   sanitizeNotice,
   maskSecretToken,
-  cleanLegacyAdminStorage
+  cleanLegacyAdminStorage,
+  getAdminSession,
+  saveAdminSession,
+  clearAdminSession
 } from "../lib/security";
 import { DriveStatusResponse } from "../lib/drive";
 import { downloadAuthenticatedExport } from "../lib/auth-fetch";
@@ -283,18 +286,28 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const urlRef = useRef("");
 
-  // Initialize and restore saved sessions from localStorage
+  // Initialize and restore saved sessions
   useEffect(() => {
-    // Admin key is memory-only; clear any legacy persistent entry
+    // Clear any legacy persistent entries in localStorage
     cleanLegacyAdminStorage();
 
-    // Student token localStorage retained for now with documented limitation (no HttpOnly session claim)
     const savedRole = localStorage.getItem("liemwhisper_role");
     const savedToken = localStorage.getItem("liemwhisper_token");
+    const savedAdminSession = getAdminSession();
 
     loadCourses();
 
-    if (savedRole === "student" && savedToken) {
+    if (savedAdminSession) {
+      setAdminKey(savedAdminSession);
+      setRole("admin");
+      loadAdminStats(savedAdminSession).catch(() => {
+        clearAdminSession();
+        setAdminKey("");
+        setRole("guest");
+      });
+      loadAdminCourses(savedAdminSession);
+      loadDriveStatus(savedAdminSession);
+    } else if (savedRole === "student" && savedToken) {
       setToken(savedToken);
       setRole("student");
       loadParticipantMe(savedToken);
@@ -508,11 +521,12 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key })
       });
-      // Issued opaque session token (8h TTL) - keep in memory only
+      // Issued opaque session token (8h TTL)
       const sessionToken = res.token || key;
       setAdminKey(sessionToken);
+      saveAdminSession(sessionToken);
 
-      // Clean any legacy persistent entry; do not persist admin session
+      // Clean any legacy persistent entry from localStorage
       cleanLegacyAdminStorage();
 
       setRole("admin");
@@ -541,6 +555,7 @@ export default function Home() {
     }
 
     cleanLegacyAdminStorage();
+    clearAdminSession();
     localStorage.removeItem("liemwhisper_role");
     localStorage.removeItem("liemwhisper_token");
     setRole("guest");

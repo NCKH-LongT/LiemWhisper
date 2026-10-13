@@ -4,7 +4,10 @@ import {
   validateNoSecretInUrl,
   sanitizeApiError,
   sanitizeNotice,
-  maskSecretToken
+  maskSecretToken,
+  getAdminSession,
+  saveAdminSession,
+  clearAdminSession
 } from "../lib/security.ts";
 
 test("validateNoSecretInUrl rejects URLs with secret query parameters", () => {
@@ -38,4 +41,23 @@ test("maskSecretToken only reveals secret when explicit reveal is true", () => {
   const secret = "secret_participant_token_abc";
   assert.strictEqual(maskSecretToken(secret, false), "••••••••••••••••");
   assert.strictEqual(maskSecretToken(secret, true), secret);
+});
+
+test("admin session helpers manage sessionStorage correctly", () => {
+  const store = new Map<string, string>();
+  (globalThis as any).window = {
+    sessionStorage: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => { store.set(k, v); },
+      removeItem: (k: string) => { store.delete(k); }
+    }
+  };
+
+  saveAdminSession("admin_session_token_123");
+  assert.strictEqual(getAdminSession(), "admin_session_token_123");
+
+  clearAdminSession();
+  assert.strictEqual(getAdminSession(), null);
+
+  delete (globalThis as any).window;
 });

@@ -80,3 +80,32 @@ export function cleanLegacyAdminStorage(): void {
     // localStorage may be disabled/restricted
   }
 }
+
+const ADMIN_SESSION_STORAGE_KEY = "liemwhisper_admin_session";
+
+export function getAdminSession(): string | null {
+  if (typeof window === "undefined" || !window.sessionStorage) return null;
+  try {
+    return window.sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveAdminSession(token: string): void {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  try {
+    window.sessionStorage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
+  } catch {
+    // sessionStorage may be disabled/restricted
+  }
+}
+
+export function clearAdminSession(): void {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  try {
+    window.sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+  } catch {
+    // sessionStorage may be disabled/restricted
+  }
+}
