@@ -371,17 +371,72 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
                 (account_id, account_email, refresh_token_enc, folder_id, now, now),
             )
 
+        web_public_url = (os.getenv("WEB_PUBLIC_URL") or "").strip().rstrip("/")
+        target_url = web_public_url if web_public_url.startswith(("http://", "https://")) else ""
+        nonce = secrets.token_urlsafe(24)
+        target_json = json.dumps(target_url)
+        refresh_meta = f'<meta http-equiv="refresh" content="2;url={target_url}">' if target_url else ""
+        action_btn = (
+            f'<a href="{target_url}" class="btn">Quay về trang quản trị</a>'
+            if target_url
+            else '<button onclick="window.close()" class="btn">Đóng cửa sổ</button>'
+        )
+
         html_content = (
             "<!DOCTYPE html>"
-            "<html>"
-            "<head><title>Google Drive Connected</title></head>"
+            '<html lang="vi">'
+            "<head>"
+            '<meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            "<title>Google Drive đã kết nối</title>"
+            f"{refresh_meta}"
+            "<style>"
+            "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fafafa;color:#09090b;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px;box-sizing:border-box}"
+            ".card{background:#ffffff;border:1px solid #e4e4e7;border-radius:12px;padding:32px;max-width:440px;width:100%;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.05)}"
+            ".badge{display:inline-block;background:#dcfce7;color:#166534;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.04em}"
+            "h2{margin:0 0 8px;font-size:18px;font-weight:700}"
+            "p{color:#52525b;font-size:14px;line-height:1.5;margin:0 0 20px}"
+            ".btn{display:inline-block;padding:10px 18px;background:#09090b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer}"
+            "</style>"
+            "</head>"
             "<body>"
-            "<h2>Google Drive Connected Successfully</h2>"
-            "<p>Your personal Google Drive storage has been connected. You can now close this tab.</p>"
+            '<div class="card">'
+            '<div class="badge">Đã kết nối</div>'
+            "<h2>Google Drive đã liên kết thành công</h2>"
+            "<p>Thư mục lưu trữ LiemWhisper đã sẵn sàng. Cửa sổ này sẽ tự động đóng.</p>"
+            f"{action_btn}"
+            "</div>"
+            f'<script nonce="{nonce}">'
+            "(() => {"
+            f"  const targetUrl = {target_json};"
+            "  try {"
+            "    if (window.opener) {"
+            '      window.opener.postMessage({ type: "DRIVE_CONNECTED" }, "*");'
+            "    }"
+            "  } catch (e) {}"
+            "  setTimeout(() => {"
+            "    try { window.close(); } catch (e) {}"
+            "    if (!window.opener && targetUrl) {"
+            "      window.location.replace(targetUrl);"
+            "    }"
+            "  }, 1200);"
+            "})();"
+            "</script>"
             "</body>"
             "</html>"
         )
-        res = HTMLResponse(content=html_content, status_code=200)
+        res = HTMLResponse(
+            content=html_content,
+            status_code=200,
+            headers={
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+                "Content-Security-Policy": (
+                    f"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; "
+                    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                ),
+            },
+        )
         res.delete_cookie(COOKIE_NAME, path="/api/v1/admin/drive")
         return res
 

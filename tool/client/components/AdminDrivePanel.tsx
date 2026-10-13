@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   DriveStatusResponse,
   formatDriveStatusText,
   buildDriveConnectRequest,
   buildDriveStatusRequest
 } from "../lib/drive";
+import { openDrivePopup, DrivePopupFlow } from "../lib/drive-popup";
 import { sanitizeApiError } from "../lib/security";
 
 interface AdminDrivePanelProps {
@@ -57,6 +58,17 @@ export function AdminDrivePanel({
 
   const statusText = formatDriveStatusText(driveStatus);
 
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === "DRIVE_CONNECTED") {
+        setConnecting(false);
+        refreshStatus();
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [adminToken]);
+
   async function refreshStatus() {
     if (!adminToken) return;
     setLoading(true);
@@ -80,7 +92,19 @@ export function AdminDrivePanel({
     if (!adminToken) return;
     setConnecting(true);
     setError(null);
+    let popupFlow: DrivePopupFlow | null = null;
     try {
+      if (typeof window !== "undefined") {
+        try {
+          popupFlow = openDrivePopup(window, () => {
+            setConnecting(false);
+            refreshStatus();
+          });
+        } catch {
+          // If popup is blocked by browser, proceed and fall back to top-level navigation
+        }
+      }
+
       const { url, init } = buildDriveConnectRequest(adminToken);
       const res = await fetch(`${apiBase}${url}`, init);
       if (!res.ok) {
@@ -91,15 +115,23 @@ export function AdminDrivePanel({
         } catch {
           // not json
         }
+        if (popupFlow) popupFlow.cancel();
         throw new Error(msg);
       }
       const data = await res.json();
       if (!data?.authorization_url) {
+        if (popupFlow) popupFlow.cancel();
         throw new Error("Máy chủ không trả về URL xác thực Google.");
       }
-      // Visit the backend first so its OAuth cookie is first-party.
-      window.location.assign(data.authorization_url);
+
+      if (popupFlow) {
+        popupFlow.navigate(data.authorization_url);
+      } else {
+        // Fallback if popup was blocked: navigate current tab
+        window.location.assign(data.authorization_url);
+      }
     } catch (err) {
+      if (popupFlow) popupFlow.cancel();
       setError(sanitizeApiError(err));
       setConnecting(false);
     }

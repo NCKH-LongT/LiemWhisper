@@ -185,6 +185,53 @@ def test_oauth_callback_success(env, monkeypatch):
     }
 
 
+def test_oauth_callback_renders_return_to_admin_ui(env, monkeypatch):
+    drive, db, client = env
+    monkeypatch.setenv("WEB_PUBLIC_URL", "https://frontend.example.com")
+
+    connect_res = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
+    state = parse_qs(urlparse(connect_res.json()["authorization_url"]).query)["state"][0]
+
+    class FakeResponse:
+        def __init__(self, status_code, json_data):
+            self.status_code = status_code
+            self._json = json_data
+            self.text = str(json_data)
+            self.content = b""
+
+        def json(self):
+            return self._json
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise Exception(f"HTTP error {self.status_code}")
+
+    def fake_request(method, url, **kwargs):
+        if "oauth2.googleapis.com/token" in url:
+            return FakeResponse(200, {
+                "access_token": "fake-access-token",
+                "refresh_token": "fake-refresh-token-secret-123",
+                "expires_in": 3600,
+            })
+        if "drive/v3/about" in url:
+            return FakeResponse(200, {"user": {"permissionId": "user-ret-001", "emailAddress": "u@example.com"}})
+        if "drive/v3/files/generateIds" in url:
+            return FakeResponse(200, {"ids": ["ret-folder-123"]})
+        if "drive/v3/files" in url and method == "POST":
+            return FakeResponse(200, {"id": "ret-folder-123"})
+        raise ValueError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+
+    callback_res = client.get(f"{BASE}/callback?code=fake-auth-code&state={state}")
+    assert callback_res.status_code == 200
+    html = callback_res.text
+    assert "https://frontend.example.com" in html
+    assert "DRIVE_CONNECTED" in html
+    assert "window.close" in html
+    assert "Quay về trang quản trị" in html
+
+
 def test_oauth_callback_rejects_account_mismatch(env, monkeypatch):
     drive, db, client = env
 
