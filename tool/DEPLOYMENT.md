@@ -93,7 +93,8 @@ Blueprint nằm tại: `tool/render.yaml`. Cấu hình Vercel nằm tại: `tool
    - Đăng nhập vào Admin Dashboard.
 3. Trong tab **Thống kê / Tổng quan**, tìm mục **Trạng thái lưu trữ Google Drive**:
    - Nhấn **Kết nối Google Drive**.
-   - Trình duyệt sẽ chuyển hướng sang trang đăng nhập Google.
+   - Trình duyệt đi qua `/api/v1/admin/drive/start` trên backend để tạo cookie first-party, rồi mới chuyển sang Google. Bước này không phụ thuộc cookie bên thứ ba giữa Vercel và Render.
+   - Nếu báo phiên hết hạn, quay lại trang quản trị và bấm kết nối lại; không tải lại URL callback cũ.
    - Đăng nhập đúng tài khoản Google cá nhân của bạn, kiểm tra quyền `drive.file` và nhấn **Allow (Cho phép)**.
    - Google sẽ redirect về callback và báo **Kết nối Google Drive thành công**.
 4. Quay lại trang Quản trị, trạng thái sẽ hiển thị: **Đã kết nối**, kèm ID thư mục riêng tư `LiemWhisper Recordings`.

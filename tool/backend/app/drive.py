@@ -7,10 +7,10 @@ import os
 import secrets
 import time
 from typing import Any, Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from cryptography.fernet import Fernet
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 import requests
 
@@ -30,6 +30,12 @@ def _init_tables(db: Callable[[], Any]) -> None:
             cookie_hash TEXT NOT NULL,
             pkce_verifier TEXT NOT NULL,
             created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS drive_oauth_handoff(
+            ticket_hash TEXT PRIMARY KEY,
             expires_at INTEGER NOT NULL
         )
         """)
@@ -91,6 +97,79 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
         if not client_id or not redirect_uri:
             raise HTTPException(500, "Google OAuth environment variables not configured")
 
+        # The cross-site frontend fetch must not set the OAuth cookie. Hand off
+        # via a short-lived, single-use capability, never an admin credential.
+        ticket = secrets.token_urlsafe(32)
+        now = int(time.time())
+        with db() as c:
+            c.execute("DELETE FROM drive_oauth_handoff WHERE expires_at <= ?", (now,))
+            c.execute(
+                "INSERT INTO drive_oauth_handoff (ticket_hash, expires_at) VALUES (?, ?)",
+                (hashlib.sha256(ticket.encode()).hexdigest(), now + 120),
+            )
+        callback = urlsplit(redirect_uri)
+        start_url = urlunsplit((callback.scheme, callback.netloc, "/api/v1/admin/drive/start", "", ticket))
+        response.headers["Cache-Control"] = "no-store"
+        return {"authorization_url": start_url}
+
+    @app.get("/api/v1/admin/drive/start", response_class=HTMLResponse)
+    def start_page():
+        # Fragment stays out of HTTP logs and Referer; erase it before any I/O.
+        nonce = secrets.token_urlsafe(24)
+        content = """<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8">
+<title>Liên kết Google Drive</title></head><body>
+<p id="status">Đang chuẩn bị liên kết Google Drive…</p>
+<noscript>Vui lòng bật JavaScript rồi kết nối lại từ trang quản trị.</noscript>
+<script nonce="NONCE">
+(async () => {
+  const ticket = location.hash.slice(1);
+  history.replaceState(null, '', location.pathname);
+  try {
+    if (!ticket) throw new Error('Phiên kết nối không hợp lệ. Hãy kết nối lại từ trang quản trị.');
+    const response = await fetch(location.pathname, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ticket})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Không thể tạo phiên kết nối.');
+    location.replace(data.authorization_url);
+  } catch (error) {
+    document.getElementById('status').textContent = error.message;
+  }
+})();
+</script></body></html>""".replace("NONCE", nonce)
+        return HTMLResponse(content, headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy": (
+                f"default-src 'none'; script-src 'nonce-{nonce}'; "
+                "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            ),
+        })
+
+    @app.post("/api/v1/admin/drive/start")
+    def start_drive(request: Request, response: Response, ticket: str = Body(embed=True)):
+        client_id = os.getenv("GOOGLE_CLIENT_ID")
+        redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+        if not client_id or not redirect_uri:
+            raise HTTPException(500, "Google OAuth environment variables not configured")
+        callback = urlsplit(redirect_uri)
+        expected_origin = f"{callback.scheme}://{callback.netloc}"
+        if request.headers.get("origin") not in (None, expected_origin):
+            raise HTTPException(403, "OAuth start must be same-origin")
+        if not ticket or len(ticket) > 128:
+            raise HTTPException(400, "Invalid or expired OAuth handoff")
+        now = int(time.time())
+        with db() as c:
+            # Atomic consume works across processes on both PostgreSQL and SQLite.
+            handoff = c.execute(
+                "DELETE FROM drive_oauth_handoff WHERE ticket_hash = ? RETURNING expires_at",
+                (hashlib.sha256(ticket.encode()).hexdigest(),),
+            ).fetchone()
+        if not handoff or handoff["expires_at"] <= now:
+            raise HTTPException(400, "Invalid or expired OAuth handoff; reconnect from admin")
+        response.headers["Cache-Control"] = "no-store"
         raw_state = secrets.token_urlsafe(32)
         state_hash = hashlib.sha256(raw_state.encode("utf-8")).hexdigest()
 
@@ -123,7 +202,7 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
             path="/api/v1/admin/drive",
         )
 
-        from urllib.parse import urlencode
+
 
         params = {
             "response_type": "code",

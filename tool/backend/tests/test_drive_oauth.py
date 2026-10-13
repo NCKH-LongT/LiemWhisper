@@ -50,8 +50,23 @@ def env(tmp_path, monkeypatch):
     return drive, db, TestClient(app, base_url="https://app.test")
 
 
+def first_party_start(client, response):
+    assert response.status_code == 200, response.text
+    url = urlparse(response.json()["authorization_url"])
+    assert url.netloc == "app.test"
+    assert url.path == BASE + "/start"
+    assert not url.query
+    assert "set-cookie" not in response.headers
+    # Model the cross-site browser dropping ALL cookies from the initial fetch.
+    client.cookies.clear()
+    landing = client.get(url.path)
+    assert landing.status_code == 200
+    assert "history.replaceState" in landing.text
+    return client.post(BASE + "/start", json={"ticket": url.fragment})
+
+
 def start(client):
-    response = client.post(BASE + "/connect", headers=HEADERS)
+    response = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     assert response.status_code == 200, response.text
     return parse_qs(urlparse(response.json()["authorization_url"]).query)
 
@@ -63,7 +78,7 @@ def test_connect_requires_header_and_binds_short_lived_pkce_state(env):
     assert client.get(BASE + "/status", headers=HEADERS).json() == {
         "connected": False, "configured": True, "folder_id": None,
     }
-    response = client.post(BASE + "/connect", headers=HEADERS)
+    response = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     query = parse_qs(urlparse(response.json()["authorization_url"]).query)
     assert query["scope"] == ["https://www.googleapis.com/auth/drive.file"]
     assert query["access_type"] == ["offline"]
@@ -84,7 +99,7 @@ def test_oauth_callback_success(env, monkeypatch):
     drive, db, client = env
 
     # 1. Start connect to get state & cookie
-    connect_res = client.post(BASE + "/connect", headers=HEADERS)
+    connect_res = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     assert connect_res.status_code == 200
     state = parse_qs(urlparse(connect_res.json()["authorization_url"]).query)["state"][0]
 
@@ -183,7 +198,7 @@ def test_oauth_callback_rejects_account_mismatch(env, monkeypatch):
         )
 
     # Start connect
-    connect_res = client.post(BASE + "/connect", headers=HEADERS)
+    connect_res = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     state = parse_qs(urlparse(connect_res.json()["authorization_url"]).query)["state"][0]
 
     class FakeResponse:
@@ -230,7 +245,7 @@ def test_oauth_callback_rejects_account_mismatch(env, monkeypatch):
 def test_oauth_callback_invalid_csrf_and_single_use(env):
     drive, db, client = env
 
-    connect_res = client.post(BASE + "/connect", headers=HEADERS)
+    connect_res = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     state = parse_qs(urlparse(connect_res.json()["authorization_url"]).query)["state"][0]
 
     # 1. Missing cookie -> 400
@@ -246,6 +261,44 @@ def test_oauth_callback_invalid_csrf_and_single_use(env):
     # 3. State is single use: after attempt, state row was consumed / deleted
     with db() as conn:
         assert conn.execute("SELECT COUNT(*) as c FROM drive_oauth_state").fetchone()["c"] == 0
+
+
+def test_handoff_requires_auth_is_hashed_single_use_and_expires(env, monkeypatch):
+    drive, db, client = env
+    assert client.post(BASE + "/connect").status_code == 403
+    assert client.post(BASE + "/start", json={"ticket": "forged"}).status_code == 400
+    response = client.post(BASE + "/connect", headers=HEADERS)
+    ticket = urlparse(response.json()["authorization_url"]).fragment
+    with db() as conn:
+        row = conn.execute("SELECT * FROM drive_oauth_handoff").fetchone()
+    assert row["ticket_hash"] == hashlib.sha256(ticket.encode()).hexdigest()
+    assert ticket not in str(dict(row))
+    assert response.headers["cache-control"] == "no-store"
+    assert client.post(BASE + "/start", json={"ticket": ticket},
+                       headers={"Origin": "https://foreign.test"}).status_code == 403
+    assert client.post(BASE + "/start", json={"ticket": ticket},
+                       headers={"Origin": "https://app.test"}).status_code == 200
+    assert client.post(BASE + "/start", json={"ticket": ticket}).status_code == 400
+    response = client.post(BASE + "/connect", headers=HEADERS)
+    ticket = urlparse(response.json()["authorization_url"]).fragment
+    now = drive.time.time()
+    monkeypatch.setattr(drive.time, "time", lambda: now + 121)
+    assert client.post(BASE + "/start", json={"ticket": ticket}).status_code == 400
+
+
+def test_start_page_does_not_consume_ticket_or_leak_it(env):
+    drive, db, client = env
+    response = client.post(BASE + "/connect", headers=HEADERS)
+    ticket = urlparse(response.json()["authorization_url"]).fragment
+    landing = client.get(BASE + "/start")
+    assert ticket not in landing.text
+    assert "set-cookie" not in landing.headers
+    assert landing.headers["referrer-policy"] == "no-referrer"
+    assert landing.headers["cache-control"] == "no-store"
+    assert "frame-ancestors 'none'" in landing.headers["content-security-policy"]
+    with db() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM drive_oauth_handoff").fetchone()[0] == 1
+    assert landing.text.index("history.replaceState") < landing.text.index("await fetch")
 
 
 def test_drive_client_operations_and_token_refresh(env, monkeypatch):

@@ -54,7 +54,8 @@ export function buildDriveConnectRequest(adminToken: string): { url: string; ini
       headers: {
         "x-admin-key": adminToken
       },
-      credentials: "include"
+      // Cookie is created only after top-level navigation to the API origin.
+      credentials: "omit"
     }
   };
 }

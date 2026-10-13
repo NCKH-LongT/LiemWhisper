@@ -34,11 +34,11 @@ test("formatDriveStatusText handles all drive connection states with neutral typ
   assert.ok(unconfigured.title.includes("Chưa cấu hình"));
 });
 
-test("buildDriveConnectRequest mandates x-admin-key header and credentials include", () => {
+test("buildDriveConnectRequest mandates x-admin-key header and no cross-site cookie dependency", () => {
   const req = buildDriveConnectRequest("session_token_xyz");
   assert.strictEqual(req.url, "/api/v1/admin/drive/connect");
   assert.strictEqual(req.init.method, "POST");
-  assert.strictEqual(req.init.credentials, "include");
+  assert.strictEqual(req.init.credentials, "omit");
   const headers = req.init.headers as Record<string, string>;
   assert.strictEqual(headers["x-admin-key"], "session_token_xyz");
   // Ensure no query string with key

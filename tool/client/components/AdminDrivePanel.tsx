@@ -97,7 +97,7 @@ export function AdminDrivePanel({
       if (!data?.authorization_url) {
         throw new Error("Máy chủ không trả về URL xác thực Google.");
       }
-      // Redirect browser to OAuth URL with session cookie bound
+      // Visit the backend first so its OAuth cookie is first-party.
       window.location.assign(data.authorization_url);
     } catch (err) {
       setError(sanitizeApiError(err));
