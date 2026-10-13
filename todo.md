@@ -1,86 +1,86 @@
-# LiemWhisper — TODO / Research & Development Backlog
+# LiemWhisper — Danh sách công việc nghiên cứu và phát triển
 
-> Status: planned unless checked and supported by a merged implementation and a verification record. Priority: secure collection platform first, independent retrieval experiment second.
+> Trạng thái: các công việc được xem là đang lên kế hoạch, trừ khi đã được đánh dấu hoàn thành, có phần triển khai đã hợp nhất và có bản ghi xác minh. Ưu tiên: xây dựng nền tảng thu thập dữ liệu an toàn trước, thực hiện thí nghiệm truy hồi độc lập sau.
 
-## Phase 0 — Governance and project setup
-- [x] Define product/research scope and directory layout in README.
-- [ ] Confirm university ethics/IRB-equivalent review before recruiting students.
-- [ ] Define consent and withdrawal procedure (no academic penalty for refusing).
-- [ ] Define dataset license, speaker anonymity, retention, deletion and access roles.
-- [ ] Create local dev environment, formatting, lint, tests, container setup and Jenkins pipeline.
-- [ ] Protect secrets and personally identifiable data; document backups.
+## Giai đoạn 0 — Quản trị và thiết lập dự án
+- [x] Xác định phạm vi sản phẩm/nghiên cứu và cấu trúc thư mục trong README.
+- [ ] Xác nhận việc thẩm định đạo đức của trường đại học hoặc hội đồng tương đương IRB trước khi tuyển sinh viên tham gia.
+- [ ] Xác định quy trình đồng ý tham gia và rút lui (không áp dụng hình thức bất lợi về học tập khi từ chối).
+- [ ] Xác định giấy phép bộ dữ liệu, cơ chế ẩn danh người nói, thời hạn lưu giữ, quy trình xóa và các vai trò truy cập.
+- [ ] Thiết lập môi trường phát triển cục bộ, định dạng mã, kiểm tra mã tĩnh (lint), kiểm thử, cấu hình container và pipeline Jenkins.
+- [ ] Bảo vệ thông tin bí mật và dữ liệu định danh cá nhân; ghi lại quy trình sao lưu.
 
-## Phase 1 — Backend / Admin — MVP
-- [x] FastAPI app, SQLite schema (WAL mode) / PostgreSQL ready, Swagger docs and healthcheck.
-- [x] RBAC: Admin, Reviewer, Student; authentication, session tokens, audit fields.
-- [x] Course CRUD; bulk import/upload approved text prompts with automatic term extraction.
-- [x] Sentence/utterance prompts: language, expected text, target_terms, difficulty, category.
-- [x] Generate prompt assignments per consenting participant with progress tracking.
-- [x] Survey configuration; consent records with policy version and timestamp, withdrawal/deletion endpoint.
-- [x] Idempotent recording upload, multi-format validation (WebM, MP4, WAV, OGG), upload size limits.
-- [x] Range-request audio streaming API for direct in-browser playback for reviewer and participant.
-- [x] Reviewer labeling API: audio playback, verbatim correction, status (approve/reject/rerecord), notes.
-- [x] Admin dashboard: collection progress, coverage per prompt, review queue, approved minutes.
-- [x] Export approved, consent-eligible manifest (JSON, CSV) and complete ZIP archive (audio + manifests).
-- [x] Automated tests: multi-format upload, invalid audio, streaming, review flow, withdrawal and export.
+## Giai đoạn 1 — Backend / Quản trị — Sản phẩm khả dụng tối thiểu (MVP)
+- [x] Ứng dụng FastAPI, lược đồ SQLite (chế độ WAL) / sẵn sàng cho PostgreSQL, tài liệu Swagger và kiểm tra tình trạng dịch vụ.
+- [x] Phân quyền theo vai trò (RBAC): Quản trị viên, Người duyệt, Sinh viên; xác thực, token phiên và các trường phục vụ kiểm toán.
+- [x] Tạo, đọc, cập nhật, xóa (CRUD) học phần; nhập/tải lên hàng loạt văn bản mẫu đã được phê duyệt, kèm trích xuất thuật ngữ tự động.
+- [x] Mẫu câu/phát ngôn cần đọc: ngôn ngữ, văn bản kỳ vọng, target_terms, độ khó, danh mục.
+- [x] Tạo phân công đọc các mẫu cho từng người đã đồng ý tham gia, kèm theo dõi tiến độ.
+- [x] Cấu hình khảo sát; lưu hồ sơ đồng ý tham gia với phiên bản chính sách và dấu thời gian, endpoint rút lui/xóa dữ liệu.
+- [x] Tải lên bản ghi âm có tính lũy đẳng (gửi lại cùng yêu cầu không tạo bản ghi trùng), xác thực nhiều định dạng (WebM, MP4, WAV, OGG), giới hạn dung lượng tải lên.
+- [x] API truyền phát âm thanh hỗ trợ yêu cầu theo dải byte (Range request), cho phép người duyệt và người tham gia nghe trực tiếp trong trình duyệt.
+- [x] API gán nhãn dành cho người duyệt: phát âm thanh, chỉnh sửa bản chép lời đúng từng lời đã nói, trạng thái (phê duyệt/từ chối/thu âm lại), ghi chú.
+- [x] Bảng điều khiển quản trị: tiến độ thu thập, độ bao phủ của từng mẫu đọc, hàng đợi duyệt, số phút ghi âm đã được phê duyệt.
+- [x] Xuất danh mục dữ liệu (manifest) đã được phê duyệt và đủ điều kiện theo sự đồng ý của người tham gia (JSON, CSV), cùng tệp ZIP đầy đủ (âm thanh + các manifest).
+- [x] Kiểm thử tự động: tải lên nhiều định dạng, âm thanh không hợp lệ, truyền phát, luồng duyệt, rút lui và xuất dữ liệu.
 
-## Phase 2 — Student web recording — MVP
-- [x] Responsive Next.js pages: invitation/login, informed consent, survey, card-by-card studio queue.
-- [x] Browser microphone permissions, record/stop, real-time waveform visualizer, playback, re-record and submit.
-- [x] Present exact server-provided prompt text, highlighted technical terms, recording guidance.
-- [x] Persist assignment state on server & localStorage, clear indicator of pending/confirmed uploads.
-- [x] Handle mic denied, browser reload, auto-resume, multi-browser audio (Chrome/Edge WebM, Safari iOS MP4).
-- [x] Accessibility and mobile-friendly responsive design, completion celebration screen.
-- [x] Restrict collection to authorized participants and prevent prompt access leakage.
+## Giai đoạn 2 — Thu âm trên web dành cho sinh viên — MVP
+- [x] Các trang Next.js thích ứng với kích thước màn hình: lời mời/đăng nhập, đồng ý tham gia sau khi được cung cấp đầy đủ thông tin, khảo sát, hàng đợi thu âm theo từng thẻ.
+- [x] Quyền truy cập micro trên trình duyệt, thu/dừng, hiển thị dạng sóng theo thời gian thực, nghe lại, thu âm lại và gửi.
+- [x] Hiển thị chính xác văn bản mẫu do máy chủ cung cấp, làm nổi bật thuật ngữ chuyên môn và hướng dẫn thu âm.
+- [x] Lưu trạng thái phân công trên máy chủ và localStorage, hiển thị rõ các lượt tải lên đang chờ/đã được xác nhận.
+- [x] Xử lý trường hợp bị từ chối quyền micro, tải lại trình duyệt, tự động tiếp tục và âm thanh trên nhiều trình duyệt (Chrome/Edge WebM, Safari iOS MP4).
+- [x] Hỗ trợ khả năng tiếp cận và thiết kế thích ứng thân thiện với thiết bị di động, màn hình chúc mừng hoàn thành.
+- [x] Giới hạn việc thu thập cho người tham gia được cấp quyền và ngăn lộ nội dung mẫu đọc cho người không có quyền truy cập.
 
-## Phase 3 — Data quality and annotation
-- [ ] Dataset manifest schema with speaker, audio, prompt, transcript, language labels, term spans.
-- [ ] Verify raw sample rate/codec/duration; derive 16-kHz mono WAV without overwriting originals.
-- [ ] Quality checks: clipping, silence, duplicates, truncated utterances, low-volume recordings.
-- [ ] At least two independent annotators for a subset, adjudication protocol and agreement reporting.
-- [ ] Split by speaker and target term; create out-of-domain test when data supports it.
-- [ ] Human-verified transcript != expected prompt; flag incomplete or altered readings.
-- [ ] Publish only aggregate/anonymized statistics unless explicit rights allow release of samples.
+## Giai đoạn 3 — Chất lượng dữ liệu và gán nhãn
+- [ ] Lược đồ manifest của bộ dữ liệu gồm người nói, âm thanh, mẫu đọc, bản chép lời, nhãn ngôn ngữ và các đoạn chứa thuật ngữ.
+- [ ] Xác minh tần số lấy mẫu/codec/thời lượng của bản gốc; tạo bản WAV mono 16 kHz mà không ghi đè bản gốc.
+- [ ] Kiểm tra chất lượng: méo do vượt ngưỡng (clipping), khoảng lặng, bản trùng lặp, phát ngôn bị cắt cụt, bản ghi âm có âm lượng thấp.
+- [ ] Có ít nhất hai người gán nhãn độc lập cho một tập con, quy trình phân xử bất đồng và báo cáo mức độ đồng thuận.
+- [ ] Chia tập dữ liệu theo người nói và thuật ngữ mục tiêu; tạo tập kiểm thử ngoài miền khi dữ liệu cho phép.
+- [ ] Bản chép lời đã được con người xác minh không đồng nhất với văn bản mẫu kỳ vọng; đánh dấu các lượt đọc thiếu hoặc thay đổi nội dung.
+- [ ] Chỉ công bố số liệu thống kê tổng hợp/đã ẩn danh, trừ khi có quyền rõ ràng cho phép công bố các mẫu dữ liệu.
 
-## Phase 4 — Research baselines
-- [ ] Freeze model/checkpoint revisions and experimental configuration.
-- [ ] Frozen PhoWhisper speech encoder + pooled projection.
-- [ ] Multilingual text encoder + projection; normalize to shared 256/512-dimensional space.
-- [ ] Baseline text G2P/IPA encoder and phoneme-only retrieval.
-- [ ] Symmetric InfoNCE with duplicate-positive handling.
-- [ ] FAISS vector search and Top-K retrieval on isolated spoken technical terms.
-- [ ] Baseline against lexical matching, untrained projections and existing speech–text retrieval approaches.
-- [ ] Evaluate Recall@1, Recall@5, MRR, hard-negative accuracy, calibration and latency.
-- [ ] Report confidence intervals clustered by speaker, with clean unseen-term test.
+## Giai đoạn 4 — Các phương pháp cơ sở cho nghiên cứu
+- [ ] Cố định phiên bản mô hình/checkpoint và cấu hình thí nghiệm.
+- [ ] Bộ mã hóa tiếng nói PhoWhisper giữ cố định trọng số + phép chiếu sau khi gộp đặc trưng (pooling).
+- [ ] Bộ mã hóa văn bản đa ngôn ngữ + phép chiếu; chuẩn hóa vào không gian chung 256/512 chiều.
+- [ ] Bộ mã hóa văn bản G2P/IPA làm phương pháp cơ sở và truy hồi chỉ dựa trên âm vị.
+- [ ] InfoNCE đối xứng có xử lý các mẫu dương trùng lặp.
+- [ ] Tìm kiếm vector bằng FAISS và truy hồi Top-K trên các thuật ngữ chuyên môn được nói riêng lẻ.
+- [ ] So sánh với các phương pháp cơ sở: đối sánh từ vựng, phép chiếu chưa huấn luyện và các phương pháp truy hồi tiếng nói–văn bản hiện có.
+- [ ] Đánh giá Recall@1, Recall@5, MRR, độ chính xác trên mẫu âm khó (hard negative), độ hiệu chuẩn và độ trễ.
+- [ ] Báo cáo khoảng tin cậy có tính đến việc phân cụm theo người nói, kèm tập kiểm thử thuật ngữ chưa từng xuất hiện và không bị rò rỉ dữ liệu.
 
-## Phase 5 — Proposed phonetic-aware method
-- [ ] Phoneme supervision using independently validated pronunciation labels and variants.
-- [ ] Acoustic confusability-based hard negatives (e.g., test case / test data).
-- [ ] Compare text-only, phoneme-only and fused text+phoneme encoders.
-- [ ] Ablation phonetic loss, fusion weights, projection dimension and frozen vs LoRA encoder.
-- [ ] Include speech segments with **no glossary terms** and report false positive insertions.
-- [ ] Test fresh-course glossary without ASR retraining.
+## Giai đoạn 5 — Phương pháp đề xuất có xét đến ngữ âm
+- [ ] Giám sát theo âm vị bằng nhãn phát âm và các biến thể đã được xác minh độc lập.
+- [ ] Sử dụng mẫu âm khó dựa trên khả năng nhầm lẫn về âm học (ví dụ: test case / test data).
+- [ ] So sánh các bộ mã hóa chỉ dùng văn bản, chỉ dùng âm vị và kết hợp văn bản + âm vị.
+- [ ] Thí nghiệm loại bỏ/thay đổi thành phần (ablation) đối với hàm mất mát ngữ âm, trọng số kết hợp, số chiều phép chiếu và bộ mã hóa giữ cố định trọng số so với điều chỉnh bằng LoRA.
+- [ ] Bổ sung các đoạn tiếng nói **không chứa thuật ngữ trong bảng thuật ngữ** và báo cáo các trường hợp chèn nhầm do dương tính giả.
+- [ ] Kiểm thử với bảng thuật ngữ của học phần mới mà không huấn luyện lại mô hình nhận dạng tiếng nói tự động (ASR).
 
-## Phase 6 — Downstream ASR (optional, after retrieval result)
-- [ ] Localize suspicious audio spans (forced alignment/sliding-window).
-- [ ] Retrieve candidates from book-derived glossary.
-- [ ] Verify candidates using original audio; no auto-correction based solely on book relevance.
-- [ ] Compare PhoWhisper raw, hotwords, semantic retrieval, phonetic retrieval and proposed fusion.
-- [ ] Evaluate WER/CER, technical-term recall, erroneous insertions and real-time factor.
-- [ ] Keep raw transcript and corrected transcript separate, especially in exam scoring.
+## Giai đoạn 6 — Ứng dụng vào ASR ở bước sau (tùy chọn, sau khi có kết quả truy hồi)
+- [ ] Xác định vị trí các đoạn âm thanh nghi vấn (căn chỉnh cưỡng bức/cửa sổ trượt).
+- [ ] Truy hồi các ứng viên từ bảng thuật ngữ trích xuất từ sách.
+- [ ] Xác minh ứng viên bằng âm thanh gốc; không tự động sửa chỉ dựa trên mức độ liên quan đến nội dung sách.
+- [ ] So sánh đầu ra gốc của PhoWhisper, cơ chế từ khóa ưu tiên (hotwords), truy hồi ngữ nghĩa, truy hồi ngữ âm và phương pháp kết hợp được đề xuất.
+- [ ] Đánh giá WER/CER, độ thu hồi thuật ngữ chuyên môn, các trường hợp chèn sai và hệ số thời gian thực.
+- [ ] Lưu riêng bản chép lời gốc và bản đã chỉnh sửa, đặc biệt khi chấm thi.
 
-## Phase 7 — Paper and reproducibility
-- [ ] Literature review matrix with primary-source citation and precise prior contributions.
-- [ ] Preregister RQs, dataset protocol, splits, losses and primary metrics.
-- [ ] Produce reproducible configs, fixed seeds, pinned checkpoints and scripts.
-- [ ] Report negative results, failure cases, speaker variability and ethics.
-- [ ] Draft Introduction / Related Work / Method / Experimental Setup / Results / Limitations.
-- [ ] Check suitable CFP/journal scope, indexing/quartile for the publication year, fees and deadlines.
-- [ ] Never report fabricated evaluation numbers or leak research participants' audio/PII.
+## Giai đoạn 7 — Bài báo và khả năng tái lập
+- [ ] Lập ma trận tổng quan tài liệu với trích dẫn nguồn sơ cấp và mô tả chính xác đóng góp của các công trình trước.
+- [ ] Đăng ký trước các câu hỏi nghiên cứu (RQ), quy trình xây dựng bộ dữ liệu, cách chia tập, hàm mất mát và các chỉ số đánh giá chính.
+- [ ] Cung cấp cấu hình có thể tái lập, giá trị seed cố định, checkpoint được cố định phiên bản và các tập lệnh.
+- [ ] Báo cáo kết quả không đạt kỳ vọng, trường hợp thất bại, sự khác biệt giữa người nói và các vấn đề đạo đức.
+- [ ] Soạn thảo các phần Giới thiệu / Công trình liên quan / Phương pháp / Thiết lập thí nghiệm / Kết quả / Hạn chế.
+- [ ] Kiểm tra thông báo mời gửi bài (CFP)/phạm vi tạp chí phù hợp, tình trạng lập chỉ mục và phân hạng tứ phân vị theo năm công bố, lệ phí và hạn nộp.
+- [ ] Không bao giờ báo cáo số liệu đánh giá bịa đặt hoặc làm lộ âm thanh/thông tin định danh cá nhân (PII) của người tham gia nghiên cứu.
 
-## Suggested acceptance gates
-- **M1 Collection pilot:** consented test users can submit and review recordings with recoverable storage.
-- **M2 Valid dataset:** verified manifests, license/consent, annotation consistency and leakage-free splits.
-- **M3 Retrieval baseline:** training script runs on a small sample and produces reproducible Recall@K.
-- **M4 Proposed method:** ablations demonstrate whether phonetics improve unseen-speaker/term retrieval.
-- **M5 Paper:** results tables correspond to archived experiment configs and outputs.
+## Các mốc nghiệm thu đề xuất
+- **M1 Thí điểm thu thập:** người dùng thử đã đồng ý tham gia có thể gửi và xem lại bản ghi âm, với hệ thống lưu trữ có khả năng khôi phục.
+- **M2 Bộ dữ liệu hợp lệ:** manifest đã được xác minh, giấy phép/sự đồng ý hợp lệ, gán nhãn nhất quán và các tập dữ liệu được chia không gây rò rỉ.
+- **M3 Phương pháp truy hồi cơ sở:** tập lệnh huấn luyện chạy được trên một mẫu dữ liệu nhỏ và tạo ra kết quả Recall@K có thể tái lập.
+- **M4 Phương pháp đề xuất:** các thí nghiệm ablation cho thấy liệu ngữ âm có cải thiện khả năng truy hồi đối với người nói/thuật ngữ chưa từng xuất hiện hay không.
+- **M5 Bài báo:** các bảng kết quả khớp với cấu hình và đầu ra thí nghiệm đã lưu trữ.
