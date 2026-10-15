@@ -64,7 +64,12 @@ def seed(style: str = "script"):
             elif style == "answer_only":
                 text = item["answer"]
             else:
-                text = item["reading_script"]
+                q = item.get("question", "").strip()
+                ans = (item.get("reading_script") or item.get("answer", "")).strip()
+                if q and ans:
+                    text = f"Câu hỏi: {q}\n\nTrả lời: {ans}"
+                else:
+                    text = ans or q
 
             # Avoid duplicates
             if c.execute("SELECT 1 FROM prompts WHERE course_id=? AND text=?", (course_id, text)).fetchone():

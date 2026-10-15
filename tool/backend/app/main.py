@@ -58,8 +58,8 @@ init_db()
 setup_auth(db)
 
 
-def auto_seed_default_prompts() -> dict:
-    """Auto-seed default SWT course and published prompts if no courses exist."""
+def auto_seed_default_prompts(force: bool = False) -> dict:
+    """Auto-seed default SWT course and published prompts if no courses exist or prompt count changed."""
     diag = {}
     try:
         candidates = [
@@ -83,12 +83,12 @@ def auto_seed_default_prompts() -> dict:
             row = c.execute("SELECT id FROM courses LIMIT 1").fetchone()
             if row:
                 course_id = row[0]
-                sample = c.execute("SELECT text FROM prompts WHERE course_id=? LIMIT 1", (course_id,)).fetchone()
-                if sample and sample[0].startswith("Câu hỏi:"):
-                    cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
+                cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
+                current_cnt = cnt_row[0] if cnt_row else 0
+                if not force and current_cnt == len(prompts_data):
                     diag["status"] = "already_seeded"
                     diag["course_id"] = str(course_id)
-                    diag["existing_prompts"] = cnt_row[0]
+                    diag["existing_prompts"] = current_cnt
                     return diag
                 else:
                     c.execute("DELETE FROM prompts WHERE course_id=?", (course_id,))
@@ -552,8 +552,8 @@ def public_courses():
 
 
 @app.api_route("/api/v1/courses/seed-default", methods=["GET", "POST"])
-def manual_seed_default():
-    diag = auto_seed_default_prompts()
+def manual_seed_default(force: bool = False):
+    diag = auto_seed_default_prompts(force=force)
     with db() as c:
         courses_rows = c.execute("SELECT id, title, description FROM courses").fetchall()
         p_count = c.execute("SELECT COUNT(*) FROM prompts WHERE published=1").fetchone()
