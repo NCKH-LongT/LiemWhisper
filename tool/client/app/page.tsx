@@ -1466,10 +1466,10 @@ export default function Home() {
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
                       Khóa / Năm học:
                       <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
-                        <option>Năm 1 (K19/K20)</option>
-                        <option>Năm 2 (K18/K19)</option>
-                        <option>Năm 3 (K17/K18)</option>
-                        <option>Năm 4 (K16/K17)</option>
+                        <option>Năm 1</option>
+                        <option>Năm 2</option>
+                        <option>Năm 3</option>
+                        <option>Năm 4</option>
                         <option>Đã tốt nghiệp / Đi làm</option>
                       </select>
                     </label>
@@ -1672,10 +1672,10 @@ export default function Home() {
                         <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
                           Khóa / Năm học:
                           <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
-                            <option>Năm 1 (K19/K20)</option>
-                            <option>Năm 2 (K18/K19)</option>
-                            <option>Năm 3 (K17/K18)</option>
-                            <option>Năm 4 (K16/K17)</option>
+                            <option>Năm 1</option>
+                            <option>Năm 2</option>
+                            <option>Năm 3</option>
+                            <option>Năm 4</option>
                             <option>Đã tốt nghiệp / Đi làm</option>
                           </select>
                         </label>
@@ -1832,7 +1832,14 @@ export default function Home() {
                   </select>
                   <button
                     style={styles.btnSecondary}
-                    onClick={() => loadTasks(selectedCourse, token)}
+                    onClick={async () => {
+                      const cList = await loadCourses();
+                      const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
+                      if (cid) {
+                        setSelectedCourse(cid);
+                        loadTasks(cid, token);
+                      }
+                    }}
                     title="Tải lại danh sách câu hỏi"
                   >
                     <RefreshIcon size={13} />
