@@ -321,14 +321,20 @@ def init_db() -> None:
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS created_at INTEGER NOT NULL DEFAULT 0;
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS participant_code TEXT DEFAULT '';
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS email TEXT DEFAULT '';
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS google_id TEXT DEFAULT '';
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS onboarded INTEGER DEFAULT 0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS duration_seconds REAL DEFAULT 0.0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS format TEXT DEFAULT 'webm';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS reviewer_notes TEXT DEFAULT '';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS reviewed_at INTEGER DEFAULT 0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS drive_sync_status TEXT DEFAULT 'pending';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
+            ALTER TABLE recordings ADD COLUMN IF NOT EXISTS client_ip TEXT DEFAULT '';
             """)
         else:
+
             c.executescript(f"""
             CREATE TABLE IF NOT EXISTS courses(
                 id TEXT PRIMARY KEY,
@@ -353,7 +359,11 @@ def init_db() -> None:
                 participant_code TEXT DEFAULT '',
                 consent_version TEXT NOT NULL,
                 consent_at INTEGER NOT NULL,
-                survey TEXT NOT NULL
+                survey TEXT NOT NULL,
+                email TEXT DEFAULT '',
+                google_id TEXT DEFAULT '',
+                name TEXT DEFAULT '',
+                onboarded INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS recordings(
                 id TEXT PRIMARY KEY,
@@ -405,6 +415,14 @@ def init_db() -> None:
             part_cols = [r[1] for r in c.execute("PRAGMA table_info(participants)").fetchall()]
             if "participant_code" not in part_cols:
                 c.execute("ALTER TABLE participants ADD COLUMN participant_code TEXT DEFAULT ''")
+            if "email" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN email TEXT DEFAULT ''")
+            if "google_id" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN google_id TEXT DEFAULT ''")
+            if "name" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN name TEXT DEFAULT ''")
+            if "onboarded" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN onboarded INTEGER DEFAULT 0")
 
             rec_cols = [r[1] for r in c.execute("PRAGMA table_info(recordings)").fetchall()]
             if "duration_seconds" not in rec_cols:
@@ -419,6 +437,8 @@ def init_db() -> None:
                 c.execute("ALTER TABLE recordings ADD COLUMN drive_sync_status TEXT DEFAULT 'pending'")
             if "drive_file_id" not in rec_cols:
                 c.execute("ALTER TABLE recordings ADD COLUMN drive_file_id TEXT")
+            if "client_ip" not in rec_cols:
+                c.execute("ALTER TABLE recordings ADD COLUMN client_ip TEXT DEFAULT ''")
 
 
 if __name__ == "__main__":

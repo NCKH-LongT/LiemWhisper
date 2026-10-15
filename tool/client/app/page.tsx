@@ -186,6 +186,29 @@ function ShieldIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+function GoogleLogoIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+      />
+    </svg>
+  );
+}
+
 async function request(path: string, opts: RequestInit = {}) {
   const check = validateNoSecretInUrl(path);
   if (!check.valid) {
@@ -236,8 +259,23 @@ export default function Home() {
   const [participantCode, setParticipantCode] = useState("");
   const [familiarity, setFamiliarity] = useState("Đang học");
   const [english, setEnglish] = useState("Bình thường");
-  const [mic, setMic] = useState("Điện thoại");
+  const [mic, setMic] = useState("Tai nghe có mic");
   const [environment, setEnvironment] = useState("Phòng yên tĩnh");
+  const [birthYear, setBirthYear] = useState<number>(2004);
+  const [academicYear, setAcademicYear] = useState("Năm 3");
+  const [environmentNoise, setEnvironmentNoise] = useState("Rất yên tĩnh (Phòng kín)");
+  const [accentRegion, setAccentRegion] = useState("Miền Bắc");
+
+  // Google Auth & Onboarding state
+  const [googleUser, setGoogleUser] = useState<{
+    temp_token: string;
+    email: string;
+    name: string;
+    picture?: string;
+    suggested_code?: string;
+  } | null>(null);
+  const [googleOnboarding, setGoogleOnboarding] = useState(false);
+
 
   // Courses & tasks
   const [courses, setCourses] = useState<Course[]>([]);
@@ -326,6 +364,53 @@ export default function Home() {
       loadTasks(selectedCourse, token);
     }
   }, [selectedCourse, token, role]);
+
+  // Initialize Google Identity Services
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+    const setupGoogle = () => {
+      const google = (window as any).google;
+      if (!google?.accounts?.id) return;
+      try {
+        google.accounts.id.initialize({
+          client_id: clientId || "1028775217424-demo.apps.googleusercontent.com",
+          callback: (response: any) => {
+            if (response?.credential) {
+              handleGoogleCallback(response.credential);
+            }
+          }
+        });
+        const container = document.getElementById("google-signin-btn-container");
+        if (container) {
+          container.innerHTML = "";
+          google.accounts.id.renderButton(container, {
+            theme: "outline",
+            size: "large",
+            width: 320,
+            text: "signin_with",
+            shape: "rectangular",
+            logo_alignment: "left"
+          });
+        }
+      } catch (err) {
+        console.warn("Google Sign-In init error:", err);
+      }
+    };
+
+    if ((window as any).google?.accounts?.id) {
+      setupGoogle();
+    } else {
+      const interval = setInterval(() => {
+        if ((window as any).google?.accounts?.id) {
+          clearInterval(interval);
+          setupGoogle();
+        }
+      }, 300);
+      return () => clearInterval(interval);
+    }
+  }, [authRoleTab, studentAuthMode, googleOnboarding]);
 
   function cleanupMedia() {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -482,9 +567,14 @@ export default function Home() {
           familiarity,
           english_level: english,
           microphone: mic,
-          environment
+          environment,
+          birth_year: Number(birthYear) || 2004,
+          academic_year: academicYear,
+          environment_noise: environmentNoise,
+          accent_region: accentRegion
         })
       });
+
       setToken(res.participant_token);
       localStorage.setItem("liemwhisper_token", res.participant_token);
       localStorage.setItem("liemwhisper_role", "student");
@@ -492,6 +582,98 @@ export default function Home() {
 
       // Only display pseudonymous code, never echo raw secret token
       setNotice(`Đăng ký thành công. Mã định danh: ${res.participant_code || "Mới"}`);
+
+      await loadParticipantMe(res.participant_token);
+      const cList = await loadCourses();
+      const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
+      if (cid) {
+        setSelectedCourse(cid);
+        loadTasks(cid, res.participant_token);
+      }
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGoogleCallback(credential: string) {
+    if (!credential) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await request("/api/v1/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential })
+      });
+
+      if (res.needs_onboarding) {
+        setGoogleUser({
+          temp_token: res.temp_token,
+          email: res.email,
+          name: res.name,
+          picture: res.picture,
+          suggested_code: res.suggested_code || ""
+        });
+        setParticipantCode(res.suggested_code || "");
+        setGoogleOnboarding(true);
+      } else {
+        setToken(res.participant_token);
+        localStorage.setItem("liemwhisper_token", res.participant_token);
+        localStorage.setItem("liemwhisper_role", "student");
+        setRole("student");
+        setNotice(`Đăng nhập Google thành công. Xin chào ${res.name || res.participant_code}!`);
+
+        await loadParticipantMe(res.participant_token);
+        const cList = await loadCourses();
+        const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
+        if (cid) {
+          setSelectedCourse(cid);
+          loadTasks(cid, res.participant_token);
+        }
+      }
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCompleteGoogleOnboard() {
+    if (!consent) {
+      setError("Vui lòng xác nhận tự nguyện tham gia nghiên cứu (Consent v1.0).");
+      return;
+    }
+    if (!googleUser?.temp_token) {
+      setError("Phiên Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại Google.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await request("/api/v1/auth/google/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          temp_token: googleUser.temp_token,
+          consent: true,
+          consent_version: "v1.0",
+          participant_code: participantCode.trim(),
+          accent_region: accentRegion,
+          birth_year: Number(birthYear) || 2004,
+          academic_year: academicYear,
+          microphone: mic,
+          environment: environmentNoise || environment
+        })
+      });
+
+      setToken(res.participant_token);
+      localStorage.setItem("liemwhisper_token", res.participant_token);
+      localStorage.setItem("liemwhisper_role", "student");
+      setRole("student");
+      setGoogleOnboarding(false);
+      setNotice(`Đăng ký thành công! Mã định danh: ${res.participant_code}.`);
 
       await loadParticipantMe(res.participant_token);
       const cList = await loadCourses();
@@ -1176,81 +1358,63 @@ export default function Home() {
           {/* STUDENT AUTH CARD */}
           {authRoleTab === "student" && (
             <div style={styles.card}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f4f4f5", paddingBottom: 14, marginBottom: 20 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
-                  {studentAuthMode === "login" ? "Đăng nhập phòng thu" : "Đăng ký tham gia thu âm"}
-                </h2>
-                <div style={{ display: "flex", gap: 4, background: "#f4f4f5", padding: 3, borderRadius: 6 }}>
-                  <button
-                    onClick={() => { setStudentAuthMode("login"); setError(""); }}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 4,
-                      border: "none",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      background: studentAuthMode === "login" ? "#ffffff" : "transparent",
-                      color: studentAuthMode === "login" ? "#09090b" : "#71717a",
-                      boxShadow: studentAuthMode === "login" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                    }}
-                  >
-                    Đã có mã truy cập
-                  </button>
-                  <button
-                    onClick={() => { setStudentAuthMode("signup"); setError(""); }}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 4,
-                      border: "none",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      background: studentAuthMode === "signup" ? "#ffffff" : "transparent",
-                      color: studentAuthMode === "signup" ? "#09090b" : "#71717a",
-                      boxShadow: studentAuthMode === "signup" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                    }}
-                  >
-                    Đăng ký mới
-                  </button>
-                </div>
-              </div>
-
-              {/* MODE A: EXISTING LOGIN */}
-              {studentAuthMode === "login" && (
+              {googleOnboarding && googleUser ? (
+                /* ================= GOOGLE ONBOARDING FORM ================= */
                 <div>
-                  <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
-                    Nhập mã truy cập bí mật đã được cấp để tiếp tục tiến độ thu âm của bạn.
-                  </p>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                    Mã truy cập bí mật:
-                    <input
-                      style={styles.field}
-                      placeholder="Nhập mã truy cập bí mật (Access Token)"
-                      value={studentIdentifierInput}
-                      onChange={(e) => setStudentIdentifierInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleStudentLogin(); }}
-                    />
-                  </label>
-                  <button
-                    style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 4 }}
-                    disabled={busy}
-                    onClick={handleStudentLogin}
-                  >
-                    Vào phòng thu âm
-                  </button>
-                </div>
-              )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f4f4f5", paddingBottom: 14, marginBottom: 16 }}>
+                    <div>
+                      <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+                        Hoàn tất thông tin đăng ký
+                      </h2>
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "#71717a" }}>
+                        Bổ sung thông tin người tham gia để bắt đầu thu âm
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setGoogleOnboarding(false); setGoogleUser(null); setError(""); }}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #e4e4e7",
+                        background: "#ffffff",
+                        fontSize: 12,
+                        color: "#71717a",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Đổi tài khoản
+                    </button>
+                  </div>
 
-              {/* MODE B: NEW REGISTRATION */}
-              {studentAuthMode === "signup" && (
-                <div>
+                  {/* Google Profile Badge */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+                    {googleUser.picture ? (
+                      <img src={googleUser.picture} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
+                    ) : (
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#4285F4", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
+                        {(googleUser.name || googleUser.email)[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {googleUser.name || "Tài khoản Google"}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {googleUser.email}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: 100, fontWeight: 600 }}>
+                      Đã xác thực Google
+                    </span>
+                  </div>
+
                   <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
                     Đề tài nghiên cứu LiemWhisper thu thập ngữ liệu phát âm tiếng Việt có chêm xen thuật ngữ CNTT. Dữ liệu được mã hóa ẩn danh phục vụ mục đích học thuật.
                   </p>
 
-                  <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", marginBottom: 16 }}>
-                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "#1e293b", lineHeight: 1.4 }}>
+                  {/* Consent Checkbox */}
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "#166534", lineHeight: 1.4 }}>
                       <input
                         type="checkbox"
                         checked={consent}
@@ -1261,65 +1425,290 @@ export default function Home() {
                     </label>
                   </div>
 
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                    Mã sinh viên hoặc Biệt danh:
+                  {/* Mã sinh viên hoặc Biệt danh (Không bắt buộc) */}
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
+                    Mã sinh viên hoặc Biệt danh <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
                     <input
                       style={styles.field}
-                      placeholder="Ví dụ: SE194007"
+                      placeholder="Ví dụ: SE194007 (để trống hệ thống tự cấp mã ẩn danh)"
                       value={participantCode}
                       onChange={(e) => setParticipantCode(e.target.value)}
                     />
                   </label>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  {/* Giọng vùng miền & Năm sinh */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                      Mức độ hiểu môn học:
-                      <select style={styles.field} value={familiarity} onChange={(e) => setFamiliarity(e.target.value)}>
-                        <option>Đang học</option>
-                        <option>Đã hoàn thành</option>
-                        <option>Chưa học</option>
-                        <option>Đã đi làm</option>
+                      Giọng vùng miền:
+                      <select style={styles.field} value={accentRegion} onChange={(e) => setAccentRegion(e.target.value)}>
+                        <option>Miền Bắc</option>
+                        <option>Miền Trung</option>
+                        <option>Miền Nam</option>
                       </select>
                     </label>
 
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                      Tự đánh giá tiếng Anh:
-                      <select style={styles.field} value={english} onChange={(e) => setEnglish(e.target.value)}>
-                        <option>Bình thường</option>
-                        <option>Tự tin</option>
-                        <option>Rất tự tin</option>
-                        <option>Hơi ngại</option>
+                      Năm sinh:
+                      <select style={styles.field} value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
+                        <option value={2006}>2006 (18-19 tuổi)</option>
+                        <option value={2005}>2005 (19-20 tuổi)</option>
+                        <option value={2004}>2004 (20-21 tuổi)</option>
+                        <option value={2003}>2003 (21-22 tuổi)</option>
+                        <option value={2002}>2002 (22-23 tuổi)</option>
+                        <option value={2001}>2001</option>
+                        <option value={2000}>2000 trở về trước</option>
                       </select>
                     </label>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  {/* Khóa / Năm học & Microphone */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                      Khóa / Năm học:
+                      <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
+                        <option>Năm 1 (K19/K20)</option>
+                        <option>Năm 2 (K18/K19)</option>
+                        <option>Năm 3 (K17/K18)</option>
+                        <option>Năm 4 (K16/K17)</option>
+                        <option>Đã tốt nghiệp / Đi làm</option>
+                      </select>
+                    </label>
+
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
                       Microphone sử dụng:
                       <select style={styles.field} value={mic} onChange={(e) => setMic(e.target.value)}>
                         <option>Điện thoại</option>
                         <option>Laptop</option>
                         <option>Tai nghe có mic</option>
-                        <option>Micro rời</option>
-                      </select>
-                    </label>
-
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                      Môi trường xung quanh:
-                      <select style={styles.field} value={environment} onChange={(e) => setEnvironment(e.target.value)}>
-                        <option>Phòng yên tĩnh</option>
-                        <option>Có tiếng ồn nhẹ</option>
+                        <option>Micro rời chuyên dụng</option>
                       </select>
                     </label>
                   </div>
 
+                  {/* Môi trường xung quanh */}
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 18 }}>
+                    Môi trường xung quanh:
+                    <select style={styles.field} value={environmentNoise} onChange={(e) => { setEnvironmentNoise(e.target.value); setEnvironment(e.target.value); }}>
+                      <option>Phòng yên tĩnh</option>
+                      <option>Có tiếng ồn nhẹ</option>
+                      <option>Quán cafe / nhiều tạp âm</option>
+                    </select>
+                  </label>
+
                   <button
-                    style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 4 }}
+                    style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", height: 42 }}
                     disabled={!consent || busy}
-                    onClick={handleStudentSignup}
+                    onClick={handleCompleteGoogleOnboard}
                   >
-                    Xác nhận & Bắt đầu thu âm
+                    {busy ? "Đang xử lý..." : "Xác nhận & Bắt đầu thu âm"}
                   </button>
+                </div>
+              ) : (
+                /* ================= STANDARD LOGIN / SIGNUP WITH GOOGLE ================= */
+                <div>
+                  <div style={{ textAlign: "center", marginBottom: 20 }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 6px", color: "#09090b" }}>
+                      Đăng nhập tham gia thu âm
+                    </h2>
+                    <p style={{ margin: 0, fontSize: 13, color: "#71717a", lineHeight: 1.5 }}>
+                      Sử dụng tài khoản Google cá nhân để bắt đầu và tự động lưu giữ tiến độ thu âm của bạn
+                    </p>
+                  </div>
+
+                  {/* Google Login Section */}
+                  <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div id="google-signin-btn-container" style={{ width: "100%", minHeight: 44, display: "flex", justifyContent: "center" }} />
+
+                    <button
+                      onClick={() => {
+                        const google = (window as any).google;
+                        if (google?.accounts?.id) {
+                          google.accounts.id.prompt();
+                        } else {
+                          setError("Dịch vụ Google đang khởi tạo. Vui lòng thử lại sau vài giây hoặc kiểm tra chặn quảng cáo.");
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        height: 44,
+                        borderRadius: 8,
+                        border: "1px solid #d4d4d8",
+                        background: "#ffffff",
+                        color: "#18181b",
+                        fontWeight: 600,
+                        fontSize: 14,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 10,
+                        cursor: "pointer",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      <GoogleLogoIcon size={18} />
+                      <span>Đăng nhập nhanh với Google</span>
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ display: "flex", alignItems: "center", margin: "20px 0 16px", color: "#a1a1aa", fontSize: 12 }}>
+                    <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
+                    <span style={{ padding: "0 12px" }}>hoặc dùng mã truy cập bí mật</span>
+                    <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
+                  </div>
+
+                  {/* Mode switcher for manual tokens */}
+                  <div style={{ display: "flex", gap: 4, background: "#f4f4f5", padding: 3, borderRadius: 6, marginBottom: 16 }}>
+                    <button
+                      onClick={() => { setStudentAuthMode("login"); setError(""); }}
+                      style={{
+                        flex: 1,
+                        padding: "6px 10px",
+                        borderRadius: 4,
+                        border: "none",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        background: studentAuthMode === "login" ? "#ffffff" : "transparent",
+                        color: studentAuthMode === "login" ? "#09090b" : "#71717a",
+                        boxShadow: studentAuthMode === "login" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
+                      }}
+                    >
+                      Đã có mã truy cập
+                    </button>
+                    <button
+                      onClick={() => { setStudentAuthMode("signup"); setError(""); }}
+                      style={{
+                        flex: 1,
+                        padding: "6px 10px",
+                        borderRadius: 4,
+                        border: "none",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        background: studentAuthMode === "signup" ? "#ffffff" : "transparent",
+                        color: studentAuthMode === "signup" ? "#09090b" : "#71717a",
+                        boxShadow: studentAuthMode === "signup" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
+                      }}
+                    >
+                      Đăng ký không dùng Google
+                    </button>
+                  </div>
+
+                  {/* MODE A: EXISTING LOGIN */}
+                  {studentAuthMode === "login" && (
+                    <div>
+                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                        Mã truy cập bí mật:
+                        <input
+                          style={styles.field}
+                          placeholder="Nhập mã truy cập bí mật (Access Token)"
+                          value={studentIdentifierInput}
+                          onChange={(e) => setStudentIdentifierInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleStudentLogin(); }}
+                        />
+                      </label>
+                      <button
+                        style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 8 }}
+                        disabled={busy}
+                        onClick={handleStudentLogin}
+                      >
+                        Vào phòng thu âm
+                      </button>
+                    </div>
+                  )}
+
+                  {/* MODE B: MANUAL SIGNUP */}
+                  {studentAuthMode === "signup" && (
+                    <div>
+                      <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", marginBottom: 14 }}>
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "#1e293b", lineHeight: 1.4 }}>
+                          <input
+                            type="checkbox"
+                            checked={consent}
+                            onChange={(e) => setConsent(e.target.checked)}
+                            style={{ marginTop: 2 }}
+                          />
+                          <span>Tôi xác nhận tự nguyện tham gia thử nghiệm thu âm cho nghiên cứu học thuật LiemWhisper (Consent v1.0).</span>
+                        </label>
+                      </div>
+
+                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 12 }}>
+                        Mã sinh viên hoặc Biệt danh <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                        <input
+                          style={styles.field}
+                          placeholder="Ví dụ: SE194007"
+                          value={participantCode}
+                          onChange={(e) => setParticipantCode(e.target.value)}
+                        />
+                      </label>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                          Giọng vùng miền:
+                          <select style={styles.field} value={accentRegion} onChange={(e) => setAccentRegion(e.target.value)}>
+                            <option>Miền Bắc</option>
+                            <option>Miền Trung</option>
+                            <option>Miền Nam</option>
+                          </select>
+                        </label>
+
+                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                          Năm sinh:
+                          <select style={styles.field} value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
+                            <option value={2006}>2006</option>
+                            <option value={2005}>2005</option>
+                            <option value={2004}>2004</option>
+                            <option value={2003}>2003</option>
+                            <option value={2002}>2002</option>
+                            <option value={2001}>2001</option>
+                            <option value={2000}>2000 trở về trước</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                          Khóa / Năm học:
+                          <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
+                            <option>Năm 1 (K19/K20)</option>
+                            <option>Năm 2 (K18/K19)</option>
+                            <option>Năm 3 (K17/K18)</option>
+                            <option>Năm 4 (K16/K17)</option>
+                            <option>Đã tốt nghiệp / Đi làm</option>
+                          </select>
+                        </label>
+
+                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                          Microphone:
+                          <select style={styles.field} value={mic} onChange={(e) => setMic(e.target.value)}>
+                            <option>Điện thoại</option>
+                            <option>Laptop</option>
+                            <option>Tai nghe có mic</option>
+                            <option>Micro rời</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 16 }}>
+                        Môi trường xung quanh:
+                        <select style={styles.field} value={environmentNoise} onChange={(e) => { setEnvironmentNoise(e.target.value); setEnvironment(e.target.value); }}>
+                          <option>Phòng yên tĩnh</option>
+                          <option>Có tiếng ồn nhẹ</option>
+                          <option>Quán cafe / nhiều tạp âm</option>
+                        </select>
+                      </label>
+
+                      <button
+                        style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 4 }}
+                        disabled={!consent || busy}
+                        onClick={handleStudentSignup}
+                      >
+                        Xác nhận & Bắt đầu thu âm
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

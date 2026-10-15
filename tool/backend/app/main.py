@@ -16,12 +16,14 @@ import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+import requests
+from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.database import db, get_data_root, init_db
+
 from app.auth import (
     admin_login,
     participant_login,
@@ -42,6 +44,7 @@ ROOT = get_data_root()
 STORAGE = os.getenv("STORAGE_BACKEND", "local")
 MAX_BYTES = int(os.getenv("MAX_AUDIO_BYTES", "15000000"))  # 15MB limit
 ADMIN_KEY = os.getenv("ADMIN_API_KEY", "liemwhisper-admin-secret-2026")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 ORIGINS_ENV = os.getenv("WEB_PUBLIC_URL", "*")
 ALLOWED_ORIGINS = [o.strip() for o in ORIGINS_ENV.split(",") if o.strip()] or ["*"]
 
@@ -121,6 +124,16 @@ def extract_potential_english_terms(text: str) -> list[str]:
     return [t for t in terms if not (t.lower() in seen or seen.add(t.lower()))]
 
 
+def get_client_ip(request: Request | None) -> str:
+    """Safely extract client IP from reverse proxy or direct socket."""
+    if not request:
+        return "unknown"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 # ----------------- Input / Output Models -----------------
 
 class CourseInput(BaseModel):
@@ -150,6 +163,10 @@ class SignupInput(BaseModel):
     english_level: str = Field(default="", max_length=100)
     microphone: str = Field(default="", max_length=100)
     environment: str = Field(default="", max_length=100)
+    birth_year: int | None = Field(default=None, ge=1970, le=2015)
+    academic_year: str = Field(default="", max_length=50)
+    environment_noise: str = Field(default="", max_length=100)
+    accent_region: str = Field(default="", max_length=50)
 
 class ReviewInput(BaseModel):
     approved: bool | None = None
@@ -162,6 +179,58 @@ class AdminLoginInput(BaseModel):
 
 class StudentLoginInput(BaseModel):
     identifier: str = Field(min_length=1, max_length=100)
+
+class GoogleAuthInput(BaseModel):
+    credential: str
+
+class GoogleOnboardInput(BaseModel):
+    temp_token: str
+    consent: bool
+    consent_version: str = Field(default="v1.0", min_length=1, max_length=30)
+    participant_code: str = Field(default="", max_length=60)
+    accent_region: str = Field(default="Miền Bắc", max_length=50)
+    birth_year: int | None = Field(default=None, ge=1970, le=2015)
+    academic_year: str = Field(default="", max_length=50)
+    microphone: str = Field(default="Điện thoại", max_length=100)
+    environment: str = Field(default="Phòng yên tĩnh", max_length=100)
+
+
+def extract_student_code(email: str) -> str:
+    """Extract student ID from email if present (e.g. se194007@fpt.edu.vn -> SE194007)."""
+    match = re.search(r"([a-zA-Z]{2}\d{5,6})", email)
+    if match:
+        return match.group(1).upper()
+    return ""
+
+
+def verify_google_id_token(credential: str) -> dict:
+    """Verify Google OAuth2 ID token using Google tokeninfo with fallback."""
+    if not credential or not isinstance(credential, str):
+        raise HTTPException(400, "Mã xác thực Google không hợp lệ")
+    try:
+        resp = requests.get(
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}",
+            timeout=8
+        )
+        if resp.status_code == 200:
+            payload = resp.json()
+            if "error" in payload or "error_description" in payload:
+                raise HTTPException(401, f"Google token không hợp lệ: {payload.get('error_description')}")
+            if not payload.get("email"):
+                raise HTTPException(400, "Tài khoản Google không có email")
+            return payload
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+        return id_token.verify_oauth2_token(credential, google_requests.Request())
+    except Exception as exc:
+        raise HTTPException(401, f"Không thể xác minh token Google: {exc}")
+
 
 # ----------------- Authentication Endpoints -----------------
 
@@ -366,17 +435,25 @@ def public_courses():
         return [dict(r) for r in rows]
 
 @app.post("/api/v1/participants")
-def signup(data: SignupInput):
+def signup(data: SignupInput, request: Request):
     if not data.consent:
         raise HTTPException(400, "Explicit consent is required")
     token = secrets.token_urlsafe(32)
     id_ = str(uuid.uuid4())
     code = data.participant_code.strip() or f"P_{secrets.token_hex(3).upper()}"
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("user-agent", "")[:250]
     survey_data = {
         "familiarity": data.familiarity,
         "english_level": data.english_level,
         "microphone": data.microphone,
-        "environment": data.environment
+        "environment": data.environment,
+        "birth_year": data.birth_year,
+        "academic_year": data.academic_year,
+        "environment_noise": data.environment_noise,
+        "accent_region": data.accent_region,
+        "client_ip": client_ip,
+        "user_agent": user_agent,
     }
     with db() as c:
         c.execute(
@@ -390,6 +467,139 @@ def signup(data: SignupInput):
         "participant_code": code,
         "message": "Đăng ký thành công. Hệ thống đã lưu mã truy cập của bạn."
     }
+
+
+@app.post("/api/v1/auth/google")
+def auth_google(data: GoogleAuthInput, request: Request):
+    """Authenticate with Google ID token, returning session or triggering onboarding."""
+    payload = verify_google_id_token(data.credential)
+    google_id = payload.get("sub", "")
+    email = payload.get("email", "").lower().strip()
+    name = payload.get("name", "")
+    picture = payload.get("picture", "")
+
+    with db() as c:
+        row = c.execute(
+            """SELECT id, participant_code, token_hash, consent_version, consent_at, survey, email, google_id, name, onboarded
+               FROM participants
+               WHERE google_id=? OR (email=? AND email != '')""",
+            (google_id, email)
+        ).fetchone()
+
+        now = int(time.time())
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get("user-agent", "")[:250]
+
+        if row:
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            c.execute(
+                "UPDATE participants SET token_hash=?, google_id=?, name=?, email=? WHERE id=?",
+                (token_hash, google_id, name, email, row["id"])
+            )
+
+            is_onboarded = bool(row["onboarded"] and row["onboarded"] == 1)
+            if is_onboarded:
+                return {
+                    "status": "success",
+                    "needs_onboarding": False,
+                    "participant_token": token,
+                    "participant_code": row["participant_code"],
+                    "participant_id": row["id"],
+                    "email": email,
+                    "name": name,
+                    "picture": picture,
+                    "message": "Đăng nhập Google thành công"
+                }
+            else:
+                return {
+                    "status": "success",
+                    "needs_onboarding": True,
+                    "temp_token": token,
+                    "email": email,
+                    "name": name,
+                    "picture": picture,
+                    "suggested_code": row["participant_code"] or extract_student_code(email)
+                }
+        else:
+            pid = str(uuid.uuid4())
+            temp_token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(temp_token.encode()).hexdigest()
+            suggested_code = extract_student_code(email)
+            draft_survey = {
+                "email": email,
+                "name": name,
+                "client_ip": client_ip,
+                "user_agent": user_agent,
+            }
+            c.execute(
+                """INSERT INTO participants(id, token_hash, participant_code, consent_version, consent_at, survey, email, google_id, name, onboarded)
+                   VALUES (?,?,?,?,?,?,?,?,?,0)""",
+                (pid, token_hash, suggested_code, "v1.0", now, json.dumps(draft_survey), email, google_id, name)
+            )
+            return {
+                "status": "success",
+                "needs_onboarding": True,
+                "temp_token": temp_token,
+                "email": email,
+                "name": name,
+                "picture": picture,
+                "suggested_code": suggested_code
+            }
+
+
+@app.post("/api/v1/auth/google/onboard")
+def auth_google_onboard(data: GoogleOnboardInput, request: Request):
+    """Complete first-time Google participant onboarding with consent and survey."""
+    if not data.consent:
+        raise HTTPException(400, "Xác nhận tự nguyện tham gia (Consent) là bắt buộc.")
+
+    token_hash = hashlib.sha256(data.temp_token.encode()).hexdigest()
+    with db() as c:
+        row = c.execute(
+            "SELECT id, participant_code, email, name, survey FROM participants WHERE token_hash=?",
+            (token_hash,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(401, "Phiên xác thực Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại Google.")
+
+        code = data.participant_code.strip()
+        if not code:
+            code = extract_student_code(row["email"]) or f"P_{secrets.token_hex(3).upper()}"
+
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get("user-agent", "")[:250]
+
+        survey_data = {
+            "email": row["email"],
+            "name": row["name"],
+            "accent_region": data.accent_region,
+            "birth_year": data.birth_year,
+            "academic_year": data.academic_year,
+            "microphone": data.microphone,
+            "environment": data.environment,
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+        }
+
+        now = int(time.time())
+        c.execute(
+            """UPDATE participants
+               SET participant_code=?, consent_version=?, consent_at=?, survey=?, onboarded=1
+               WHERE id=?""",
+            (code, data.consent_version, now, json.dumps(survey_data), row["id"])
+        )
+
+    return {
+        "status": "success",
+        "participant_token": data.temp_token,
+        "participant_code": code,
+        "participant_id": row["id"],
+        "email": row["email"],
+        "name": row["name"],
+        "message": "Đăng ký thành công. Chào mừng bạn đến với LiemWhisper!"
+    }
+
 
 @app.get("/api/v1/participants/me")
 def participant_me(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
@@ -460,6 +670,7 @@ async def upload_recording(
     prompt_id: str = Form(...),
     audio: UploadFile = File(...),
     duration: float = Form(0.0),
+    request: Request = None,
     x_participant_token: str | None = Header(None),
     token: str | None = Query(None)
 ):
@@ -482,20 +693,22 @@ async def upload_recording(
     now = int(time.time())
     file_sha256 = hashlib.sha256(body).hexdigest()
     initial_sync_status = "pending" if STORAGE == "sql_drive" else "disabled"
+    client_ip = get_client_ip(request)
 
     with db() as c:
         try:
             storage_key = store_audio_bytes(rec_id, body, ext, norm_mime, STORAGE, c, AUDIO_DIR)
             c.execute("""
                 INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
-                                       duration_seconds, format, status, created_at, drive_sync_status)
-                VALUES (?,?,?,?,?,?,?,?,?,'pending_review',?,?)
-            """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status))
+                                       duration_seconds, format, status, created_at, drive_sync_status, client_ip)
+                VALUES (?,?,?,?,?,?,?,?,?,'pending_review',?,?,?)
+            """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status, client_ip))
         except Exception as exc:
             msg = str(exc)
             if "UNIQUE" in msg.upper() or "INTEGRITY" in msg.upper():
                 raise HTTPException(409, "Bạn đã nộp bản ghi cho câu này rồi") from exc
             raise
+
 
     return {
         "recording_id": rec_id,
