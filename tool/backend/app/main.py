@@ -14,6 +14,7 @@ import secrets
 import time
 import uuid
 import zipfile
+from pathlib import Path
 import urllib.request
 try:
     import requests
