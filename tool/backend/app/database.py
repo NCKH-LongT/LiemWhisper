@@ -14,6 +14,32 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_DATA_ROOT = PROJECT_ROOT / "private-data"
 
 
+def _load_dotenv() -> None:
+    for p in [
+        Path(".env"),
+        PROJECT_ROOT / ".env",
+        PROJECT_ROOT / "tool" / ".env",
+        Path(__file__).resolve().parent.parent / ".env",
+    ]:
+        if p.exists() and p.is_file():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+            except Exception:
+                pass
+
+
+_load_dotenv()
+
+
 def get_data_root() -> Path:
     root = Path(os.getenv("DATA_ROOT", str(DEFAULT_DATA_ROOT))).resolve()
     root.mkdir(parents=True, exist_ok=True)

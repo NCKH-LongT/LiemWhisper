@@ -14,9 +14,11 @@ import secrets
 import time
 import uuid
 import zipfile
-from pathlib import Path
-
-import requests
+import urllib.request
+try:
+    import requests
+except ImportError:
+    requests = None
 from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -204,26 +206,47 @@ def extract_student_code(email: str) -> str:
 
 
 def verify_google_id_token(credential: str) -> dict:
-    """Verify Google OAuth2 ID token using Google tokeninfo with fallback."""
+    """Verify Google OAuth2 ID token using Google tokeninfo with urllib and fallbacks."""
     if not credential or not isinstance(credential, str):
         raise HTTPException(400, "Mã xác thực Google không hợp lệ")
+
+    # Method 1: Standard urllib (zero third-party dependencies)
     try:
-        resp = requests.get(
-            f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}",
-            timeout=8
-        )
-        if resp.status_code == 200:
-            payload = resp.json()
-            if "error" in payload or "error_description" in payload:
-                raise HTTPException(401, f"Google token không hợp lệ: {payload.get('error_description')}")
-            if not payload.get("email"):
-                raise HTTPException(400, "Tài khoản Google không có email")
-            return payload
+        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
+        req = urllib.request.Request(url, headers={"User-Agent": "LiemWhisper-Backend/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                payload = json.loads(response.read().decode("utf-8"))
+                if "error" in payload or "error_description" in payload:
+                    raise HTTPException(401, f"Google token không hợp lệ: {payload.get('error_description')}")
+                if not payload.get("email"):
+                    raise HTTPException(400, "Tài khoản Google không có email")
+                return payload
     except HTTPException:
         raise
     except Exception:
         pass
 
+    # Method 2: requests if available
+    if requests is not None:
+        try:
+            resp = requests.get(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}",
+                timeout=8
+            )
+            if resp.status_code == 200:
+                payload = resp.json()
+                if "error" in payload or "error_description" in payload:
+                    raise HTTPException(401, f"Google token không hợp lệ: {payload.get('error_description')}")
+                if not payload.get("email"):
+                    raise HTTPException(400, "Tài khoản Google không có email")
+                return payload
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    # Method 3: google.oauth2.id_token if installed
     try:
         from google.oauth2 import id_token
         from google.auth.transport import requests as google_requests
