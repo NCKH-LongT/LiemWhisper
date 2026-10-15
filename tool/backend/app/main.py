@@ -83,12 +83,15 @@ def auto_seed_default_prompts() -> dict:
             row = c.execute("SELECT id FROM courses LIMIT 1").fetchone()
             if row:
                 course_id = row[0]
-                cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
-                if cnt_row and cnt_row[0] > 0:
+                sample = c.execute("SELECT text FROM prompts WHERE course_id=? LIMIT 1", (course_id,)).fetchone()
+                if sample and sample[0].startswith("Câu hỏi:"):
+                    cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
                     diag["status"] = "already_seeded"
                     diag["course_id"] = str(course_id)
                     diag["existing_prompts"] = cnt_row[0]
                     return diag
+                else:
+                    c.execute("DELETE FROM prompts WHERE course_id=?", (course_id,))
             else:
                 course_id = str(uuid.uuid4())
                 now = int(time.time())
@@ -107,7 +110,12 @@ def auto_seed_default_prompts() -> dict:
             inserted = 0
             for item in prompts_data:
                 pid = str(uuid.uuid4())
-                text = item.get("reading_script") or item.get("question", "")
+                q = item.get("question", "").strip()
+                ans = (item.get("reading_script") or item.get("answer", "")).strip()
+                if q and ans:
+                    text = f"Câu hỏi: {q}\n\nTrả lời: {ans}"
+                else:
+                    text = ans or q
                 terms = json.dumps(item.get("target_terms", []), ensure_ascii=False)
                 category = item.get("category", "")
                 c.execute(

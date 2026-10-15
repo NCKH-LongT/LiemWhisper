@@ -1953,17 +1953,94 @@ export default function Home() {
               </div>
 
               {/* PROMPT TEXT DISPLAY */}
-              <div style={{ background: "#f8fafc", padding: "24px 20px", borderRadius: 8, border: "1px solid #f1f5f9", marginBottom: 24, textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-                  Văn bản cần đọc
-                </div>
-                <p style={{ fontSize: 20, fontWeight: 600, color: "#09090b", lineHeight: 1.7, margin: "8px 0 12px" }}>
-                  {renderHighlightedText(currentTask.text, currentTask.target_terms)}
-                </p>
-                <p style={{ fontSize: 13, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
-                  Hướng dẫn: Đọc to, rõ ràng theo tốc độ tự nhiên. Phát âm thuật ngữ tiếng Anh theo thói quen giao tiếp kỹ thuật của bạn.
-                </p>
-              </div>
+              {(() => {
+                const text = currentTask.text || "";
+                let questionPart = "";
+                let readingPart = text;
+
+                if (text.includes("Câu hỏi:") && text.includes("Trả lời:")) {
+                  const parts = text.split("Trả lời:");
+                  questionPart = parts[0].replace("Câu hỏi:", "").trim();
+                  readingPart = parts.slice(1).join("Trả lời:").trim();
+                } else if (text.includes("Hỏi:") && text.includes("Đáp:")) {
+                  const parts = text.split("Đáp:");
+                  questionPart = parts[0].replace("Hỏi:", "").trim();
+                  readingPart = parts.slice(1).join("Đáp:").trim();
+                }
+
+                return (
+                  <div style={{ marginBottom: 24 }}>
+                    {questionPart && (
+                      <div
+                        style={{
+                          background: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 8,
+                          padding: "14px 18px",
+                          marginBottom: 14,
+                          textAlign: "left"
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#475569",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 6,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8
+                          }}
+                        >
+                          <span style={{ background: "#e2e8f0", color: "#334155", padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>
+                            CÂU HỎI
+                          </span>
+                          {currentTask.category && (
+                            <span style={{ color: "#64748b", fontWeight: 500, fontSize: 11 }}>
+                              Chủ đề: {currentTask.category}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", lineHeight: 1.5 }}>
+                          {questionPart}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        background: "#ffffff",
+                        padding: "24px 20px",
+                        borderRadius: 8,
+                        border: "1px solid #e4e4e7",
+                        textAlign: "center",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#166534",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          marginBottom: 10
+                        }}
+                      >
+                        🎙️ Văn bản đọc thu âm (Câu trả lời)
+                      </div>
+                      <p style={{ fontSize: 20, fontWeight: 600, color: "#09090b", lineHeight: 1.7, margin: "8px 0 12px" }}>
+                        {renderHighlightedText(readingPart, currentTask.target_terms)}
+                      </p>
+                      <p style={{ fontSize: 13, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                        Hướng dẫn: Đọc to, rõ ràng theo tốc độ tự nhiên. Phát âm thuật ngữ tiếng Anh theo thói quen giao tiếp kỹ thuật của bạn.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* LIVE WAVEFORM VISUALIZER & TIMER */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
