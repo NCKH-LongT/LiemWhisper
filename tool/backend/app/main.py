@@ -57,16 +57,37 @@ init_db()
 setup_auth(db)
 
 
-def auto_seed_default_prompts():
+def auto_seed_default_prompts() -> dict:
     """Auto-seed default SWT course and published prompts if no courses exist."""
+    diag = {}
     try:
+        candidates = [
+            Path(__file__).resolve().parent / "swt_qa_prompts.json",
+            Path(__file__).resolve().parent.parent.parent / "scripts" / "swt_qa_prompts.json",
+            Path(__file__).resolve().parent.parent / "scripts" / "swt_qa_prompts.json",
+            Path("tool/scripts/swt_qa_prompts.json"),
+            Path("scripts/swt_qa_prompts.json"),
+        ]
+        json_file = next((p for p in candidates if p.exists()), None)
+        diag["json_file"] = str(json_file) if json_file else None
+        if not json_file:
+            diag["error"] = "No swt_qa_prompts.json found"
+            return diag
+
+        with open(json_file, "r", encoding="utf-8") as f:
+            prompts_data = json.load(f)
+        diag["prompts_count"] = len(prompts_data)
+
         with db() as c:
             row = c.execute("SELECT id FROM courses LIMIT 1").fetchone()
             if row:
-                course_id = row["id"]
-                cnt_row = c.execute("SELECT COUNT(*) AS cnt FROM prompts WHERE course_id=?", (course_id,)).fetchone()
-                if cnt_row and cnt_row["cnt"] > 0:
-                    return
+                course_id = row[0]
+                cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
+                if cnt_row and cnt_row[0] > 0:
+                    diag["status"] = "already_seeded"
+                    diag["course_id"] = str(course_id)
+                    diag["existing_prompts"] = cnt_row[0]
+                    return diag
             else:
                 course_id = str(uuid.uuid4())
                 now = int(time.time())
@@ -79,21 +100,10 @@ def auto_seed_default_prompts():
                         now,
                     )
                 )
-
-            candidates = [
-                Path(__file__).resolve().parent.parent.parent / "scripts" / "swt_qa_prompts.json",
-                Path(__file__).resolve().parent.parent / "scripts" / "swt_qa_prompts.json",
-                Path("tool/scripts/swt_qa_prompts.json"),
-                Path("scripts/swt_qa_prompts.json"),
-            ]
-            json_file = next((p for p in candidates if p.exists()), None)
-            if not json_file:
-                return
-
-            with open(json_file, "r", encoding="utf-8") as f:
-                prompts_data = json.load(f)
+                diag["created_course_id"] = str(course_id)
 
             now = int(time.time())
+            inserted = 0
             for item in prompts_data:
                 pid = str(uuid.uuid4())
                 text = item.get("reading_script") or item.get("question", "")
@@ -104,8 +114,18 @@ def auto_seed_default_prompts():
                        VALUES (?,?,?,?,?,?,?,1,?)""",
                     (pid, course_id, text, "vi-en", terms, "normal", category, now)
                 )
+                inserted += 1
+
+            diag["status"] = "seeded"
+            diag["inserted"] = inserted
+            return diag
     except Exception as exc:
+        import traceback
+        diag["status"] = "exception"
+        diag["exception"] = str(exc)
+        diag["traceback"] = traceback.format_exc()
         print(f"Notice: auto_seed_default_prompts exception: {exc}")
+        return diag
 
 
 auto_seed_default_prompts()
@@ -524,14 +544,15 @@ def public_courses():
 
 @app.api_route("/api/v1/courses/seed-default", methods=["GET", "POST"])
 def manual_seed_default():
-    auto_seed_default_prompts()
+    diag = auto_seed_default_prompts()
     with db() as c:
         courses_rows = c.execute("SELECT id, title, description FROM courses").fetchall()
-        p_count = c.execute("SELECT COUNT(*) AS cnt FROM prompts WHERE published=1").fetchone()
+        p_count = c.execute("SELECT COUNT(*) FROM prompts WHERE published=1").fetchone()
     return {
         "status": "success",
+        "diagnostic": diag,
         "courses": [dict(r) for r in courses_rows],
-        "published_prompts": p_count["cnt"] if p_count else 0
+        "published_prompts": p_count[0] if p_count else 0
     }
 
 @app.post("/api/v1/participants")
