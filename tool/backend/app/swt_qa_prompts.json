@@ -4,7 +4,7 @@
     "category": "Testing Techniques",
     "question": "Em hãy giải thích kỹ thuật Equivalence Partitioning và lấy ví dụ khi kiểm thử một form đăng ký.",
     "reading_script": "Kỹ thuật Equivalence Partitioning chia tập dữ liệu đầu vào thành các phân vùng tương đương hợp lệ và không hợp lệ để giảm số lượng test case cần thiết.",
-    "answer": "Equivalence Partitioning là kỹ thuật chia miền giá trị đầu vào thành các lớp tương đương; dữ liệu trong cùng một lớp được kỳ vọng sẽ xử lý như nhau. Ví dụ ở form đăng ký, ô tuổi từ 18 đến 60 có một phân vùng hợp lệ và hai phân vùng không hợp lệ là nhỏ hơn 18 hoặc lớn hơn 60.",
+    "answer": "Equivalence Partitioning là kỹ thuật chia miền giá trị đầu vào thành các lớp tương đương, dữ liệu trong cùng một lớp được kỳ vọng sẽ xử lý như nhau. Ví dụ ở form đăng ký, ô tuổi từ 18 đến 60 có một phân vùng hợp lệ và hai phân vùng không hợp lệ là nhỏ hơn 18 hoặc lớn hơn 60.",
     "target_terms": [
       "Equivalence Partitioning"
     ]
@@ -32,46 +32,15 @@
     ]
   },
   {
-    "id": "SWT-04",
-    "category": "Testing Techniques",
-    "question": "Hãy giải thích cách áp dụng State Transition Testing cho chức năng đăng nhập bị khóa sau nhiều lần nhập sai mật khẩu.",
-    "reading_script": "Áp dụng State Transition Testing để kiểm tra sự chuyển đổi trạng thái tài khoản từ hoạt động sang tạm khóa sau ba lần nhập sai password liên tiếp.",
-    "answer": "State Transition Testing mô hình hóa các trạng thái của hệ thống và điều kiện chuyển trạng thái. Với chức năng đăng nhập, tài khoản từ trạng thái Active sẽ chuyển sang Locked sau ba lần nhập sai mật khẩu và trở lại Active sau thời gian đếm ngược hoặc mở khóa.",
-    "target_terms": [
-      "State Transition Testing"
-    ]
-  },
-  {
-    "id": "SWT-05",
-    "category": "Testing Techniques",
-    "question": "Exploratory Testing khác gì so với kiểm thử dựa trên test case có sẵn?",
-    "reading_script": "Exploratory Testing là quá trình vừa tìm hiểu hệ thống vừa thiết kế và thực thi kiểm thử cùng lúc, thay vì tuân theo các test case đã được viết sẵn từ trước.",
-    "answer": "Exploratory Testing không phụ thuộc vào kịch bản cố định mà dựa vào kinh nghiệm, tư duy phản biện của tester để đồng thời học hỏi, thiết kế và thực thi kiểm thử nhằm phát hiện các lỗi ẩn sâu.",
-    "target_terms": [
-      "Exploratory Testing",
-      "Test Case"
-    ]
-  },
-  {
     "id": "SWT-06",
     "category": "Test Levels & Phases",
     "question": "Em hãy phân biệt Unit Testing, Integration Testing và System Testing.",
     "reading_script": "Unit Testing kiểm tra từng hàm hoặc class riêng lẻ, Integration Testing kiểm tra sự giao tiếp giữa các module, còn System Testing đánh giá toàn bộ hệ thống hoàn chỉnh.",
-    "answer": "Unit Testing do developer viết để kiểm tra các hàm đơn lẻ; Integration Testing kiểm tra tích hợp dữ liệu giữa các module hay API; còn System Testing kiểm thử toàn bộ hệ thống từ đầu đến cuối theo đúng yêu cầu nghiệp vụ.",
+    "answer": "Unit Testing do developer viết để kiểm tra các hàm đơn lẻ, Integration Testing kiểm tra tích hợp dữ liệu giữa các module hay API, còn System Testing kiểm thử toàn bộ hệ thống từ đầu đến cuối theo đúng yêu cầu nghiệp vụ.",
     "target_terms": [
       "Unit Testing",
       "Integration Testing",
       "System Testing"
-    ]
-  },
-  {
-    "id": "SWT-07",
-    "category": "Test Levels & Phases",
-    "question": "Trong một dự án phần mềm, Acceptance Testing được thực hiện nhằm mục đích gì?",
-    "reading_script": "Mục đích chính của Acceptance Testing là để khách hàng hoặc người dùng cuối xác nhận hệ thống đã đáp ứng đúng nhu cầu nghiệp vụ trước khi bàn giao sản phẩm.",
-    "answer": "Acceptance Testing là mức độ kiểm thử cuối cùng trước khi bàn giao, nhằm đánh giá sự sẵn sàng của hệ thống và giúp khách hàng hoặc người dùng cuối xác nhận phần mềm đạt yêu cầu nghiệm thu.",
-    "target_terms": [
-      "Acceptance Testing"
     ]
   },
   {
@@ -86,23 +55,11 @@
     ]
   },
   {
-    "id": "SWT-09",
-    "category": "Test Levels & Phases",
-    "question": "Em hãy trình bày các hoạt động chính trong Software Testing Life Cycle.",
-    "reading_script": "Quy trình STLC bao gồm các giai đoạn từ phân tích yêu cầu, Test Planning, thiết kế test case, chuẩn bị môi trường, đến Test Execution và tổng kết báo cáo.",
-    "answer": "STLC gồm sáu giai đoạn chính: Phân tích yêu cầu, Test Planning (Lập kế hoạch), Thiết kế test case, Thiết lập môi trường test, Test Execution (Thực thi test), và Test Closure (Đóng chu trình kiểm thử).",
-    "target_terms": [
-      "STLC",
-      "Test Planning",
-      "Test Execution"
-    ]
-  },
-  {
     "id": "SWT-10",
     "category": "Test Levels & Phases",
     "question": "Smoke Testing và Sanity Testing thường được sử dụng trong những tình huống nào?",
     "reading_script": "Smoke Testing dùng để kiểm tra nhanh các tính năng quan trọng nhất sau khi nhận bản build mới, còn Sanity Testing được chạy để xác nhận các tính năng vừa sửa lỗi.",
-    "answer": "Smoke Testing kiểm tra sơ bộ các chức năng cốt lõi xem bản build có đủ ổn định để tiếp tục test hay không; còn Sanity Testing kiểm tra sâu vào chức năng cụ thể vừa được sửa lỗi hoặc cập nhật nhỏ.",
+    "answer": "Smoke Testing kiểm tra sơ bộ các chức năng cốt lõi xem bản build có đủ ổn định để tiếp tục test hay không, còn Sanity Testing kiểm tra sâu vào chức năng cụ thể vừa được sửa lỗi hoặc cập nhật nhỏ.",
     "target_terms": [
       "Smoke Testing",
       "Sanity Testing"
@@ -125,31 +82,10 @@
     "category": "Test Artifacts & Work Products",
     "question": "Em hãy giải thích sự khác nhau giữa Test Plan và Test Suite.",
     "reading_script": "Test Plan là tài liệu chiến lược tổng thể mô tả phạm vi, nhân sự và lịch trình kiểm thử, còn Test Suite là tập hợp nhóm các test case cụ thể được gom lại để chạy cùng nhau.",
-    "answer": "Test Plan là tài liệu quản lý cấp cao bao gồm phạm vi, cách tiếp cận, tài nguyên và lịch biểu kiểm thử; còn Test Suite là bộ sưu tập chứa các test case liên quan được gom nhóm theo chức năng hoặc vòng test.",
+    "answer": "Test Plan là tài liệu quản lý cấp cao bao gồm phạm vi, cách tiếp cận, tài nguyên và lịch biểu kiểm thử, còn Test Suite là bộ sưu tập chứa các test case liên quan được gom nhóm theo chức năng hoặc vòng test.",
     "target_terms": [
       "Test Plan",
       "Test Suite"
-    ]
-  },
-  {
-    "id": "SWT-13",
-    "category": "Test Artifacts & Work Products",
-    "question": "Trong quá trình thực hiện test case, em xác định Expected Result và Actual Result như thế nào?",
-    "reading_script": "Expected Result được xác định dựa trên tài liệu đặc tả yêu cầu, còn Actual Result là kết quả hiển thị thực tế khi chạy test case trên hệ thống.",
-    "answer": "Expected Result là kết quả đúng chuẩn theo tài liệu đặc tả yêu cầu người dùng; Actual Result là hành vi thực tế của phần mềm khi tester thao tác; nếu hai kết quả lệch nhau thì sinh ra bug.",
-    "target_terms": [
-      "Expected Result",
-      "Actual Result"
-    ]
-  },
-  {
-    "id": "SWT-14",
-    "category": "Test Artifacts & Work Products",
-    "question": "Tại sao tester cần chuẩn bị Test Data trước khi thực hiện kiểm thử?",
-    "reading_script": "Chuẩn bị trước Test Data giúp tester bao phủ được mọi kịch bản dữ liệu hợp lệ và biên dị thường, tránh làm gián đoạn quá trình thực thi kiểm thử.",
-    "answer": "Test Data được chuẩn bị trước giúp đảm bảo bao quát cả dữ liệu tích cực, tiêu cực và biên; đồng thời giúp tiết kiệm thời gian thực thi test và nâng cao tính tái hiện của kịch bản.",
-    "target_terms": [
-      "Test Data"
     ]
   },
   {
@@ -160,18 +96,6 @@
     "answer": "Requirement Traceability Matrix (RTM) liên kết hai chiều giữa yêu cầu người dùng với các test case tương ứng, đảm bảo 100% yêu cầu đều được kiểm thử và hỗ trợ phân tích tác động khi có thay đổi.",
     "target_terms": [
       "Requirement Traceability Matrix"
-    ]
-  },
-  {
-    "id": "SWT-16",
-    "category": "Defect & Execution Management",
-    "question": "Em hãy giải thích sự khác nhau giữa Error, Defect và Failure trong Software Testing.",
-    "reading_script": "Error là sai sót của con người khi lập trình, Defect là khiếm khuyết nằm trong mã nguồn, còn Failure xảy ra khi chương trình chạy sai so với kỳ vọng trong thực tế.",
-    "answer": "Error là lỗi vô ý của con người trong quá trình viết code hoặc phân tích; Defect là khiếm khuyết nằm trong mã nguồn hoặc tài liệu do Error gây ra; Failure là sự cố hệ thống khi chạy thực tế xuất hiện hành vi sai lệch so với yêu cầu.",
-    "target_terms": [
-      "Error",
-      "Defect",
-      "Failure"
     ]
   },
   {
@@ -191,7 +115,7 @@
     "category": "Defect & Execution Management",
     "question": "Severity và Priority khác nhau như thế nào? Hãy đưa ra một ví dụ thực tế.",
     "reading_script": "Severity đo lường mức độ tác động kỹ thuật của lỗi lên hệ thống, còn Priority xác định mức độ khẩn cấp cần sửa lỗi theo góc nhìn kinh doanh.",
-    "answer": "Severity đánh giá mức độ ảnh hưởng kỹ thuật tới phần mềm; Priority quyết định mức độ ưu tiên cần khắc phục lỗi sớm. Ví dụ: Logo công ty trên trang chủ bị vỡ hình có Severity thấp nhưng Priority rất cao vì ảnh hưởng hình ảnh thương hiệu.",
+    "answer": "Severity đánh giá mức độ ảnh hưởng kỹ thuật tới phần mềm, Priority quyết định mức độ ưu tiên cần khắc phục lỗi sớm. Ví dụ: Logo công ty trên trang chủ bị vỡ hình có Severity thấp nhưng Priority rất cao vì ảnh hưởng hình ảnh thương hiệu.",
     "target_terms": [
       "Severity",
       "Priority"
@@ -209,22 +133,11 @@
     ]
   },
   {
-    "id": "SWT-20",
-    "category": "Defect & Execution Management",
-    "question": "Trong dự án sử dụng Jira, em sẽ quản lý trạng thái bug và theo dõi việc sửa lỗi như thế nào?",
-    "reading_script": "Trên Jira, em tạo issue loại bug, gắn nhãn cho developer liên quan và cập nhật trạng thái luồng Bug Tracking từ In Progress sang Ready for Test.",
-    "answer": "Trên Jira, tester tạo Issue type là Bug, điền đầy đủ các trường, chỉ định người phụ trách; sau đó theo dõi qua bảng Kanban/Scrum từ To Do, In Progress, In Review đến Done hoặc Ready for QA.",
-    "target_terms": [
-      "Jira",
-      "Bug Tracking"
-    ]
-  },
-  {
     "id": "SWT-21",
     "category": "Quality Types & Metrics",
     "question": "Functional Testing và Non-functional Testing khác nhau ở điểm nào?",
     "reading_script": "Functional Testing tập trung kiểm tra xem hệ thống làm được những tính năng gì, còn Non-functional Testing đánh giá hệ thống hoạt động tốt như thế nào về tốc độ và bảo mật.",
-    "answer": "Functional Testing tập trung xác minh xem phần mềm có thực hiện đúng các chức năng nghiệp vụ được yêu cầu hay không; còn Non-functional Testing kiểm tra các thuộc tính phi chức năng như hiệu năng, tải, bảo mật và tính khả dụng.",
+    "answer": "Functional Testing tập trung xác minh xem phần mềm có thực hiện đúng các chức năng nghiệp vụ được yêu cầu hay không, còn Non-functional Testing kiểm tra các thuộc tính phi chức năng như hiệu năng, tải, bảo mật và tính khả dụng.",
     "target_terms": [
       "Functional Testing",
       "Non-functional Testing"
@@ -235,7 +148,7 @@
     "category": "Quality Types & Metrics",
     "question": "Khi kiểm thử một website có nhiều người dùng cùng truy cập, em sẽ áp dụng Load Testing hay Stress Testing? Vì sao?",
     "reading_script": "Em áp dụng Load Testing để kiểm tra khả năng chịu tải bình thường và cao điểm, sau đó dùng Stress Testing để tìm điểm giới hạn mà hệ thống bắt đầu crash.",
-    "answer": "Load Testing được dùng để đánh giá hệ thống hoạt động ra sao dưới mức tải dự kiến (ví dụ 10.000 users); còn Stress Testing đẩy tải vượt ngưỡng tối đa để xem hệ thống gãy đổ như thế nào và có khả năng phục hồi hay không.",
+    "answer": "Load Testing được dùng để đánh giá hệ thống hoạt động ra sao dưới mức tải dự kiến (ví dụ 10.000 users), còn Stress Testing đẩy tải vượt ngưỡng tối đa để xem hệ thống gãy đổ như thế nào và có khả năng phục hồi hay không.",
     "target_terms": [
       "Load Testing",
       "Stress Testing"
@@ -245,34 +158,11 @@
     "id": "SWT-23",
     "category": "Quality Types & Metrics",
     "question": "Code Coverage là gì? Nếu đạt 100% Statement Coverage thì có đồng nghĩa phần mềm không còn bug không?",
-    "reading_script": "Chỉ số Code Coverage đo lường tỷ lệ mã lệnh được thực thi; tuy nhiên đạt 100% Statement Coverage vẫn có thể bỏ sót bug nếu thiếu kịch bản kiểm tra các nhánh rẽ.",
-    "answer": "Code Coverage là thước đo phần trăm mã nguồn được chạy qua bởi bộ test; đạt 100% Statement Coverage chỉ chứng minh mọi dòng lệnh đã chạy qua một lần, nhưng hoàn toàn có thể bỏ sót các điều kiện nhánh sai (branch) hoặc dữ liệu biên.",
+    "reading_script": "Chỉ số Code Coverage đo lường tỷ lệ mã lệnh được thực thi, tuy nhiên đạt 100% Statement Coverage vẫn có thể bỏ sót bug nếu thiếu kịch bản kiểm tra các nhánh rẽ.",
+    "answer": "Code Coverage là thước đo phần trăm mã nguồn được chạy qua bởi bộ test, đạt 100% Statement Coverage chỉ chứng minh mọi dòng lệnh đã chạy qua một lần, nhưng hoàn toàn có thể bỏ sót các điều kiện nhánh sai (branch) hoặc dữ liệu biên.",
     "target_terms": [
       "Code Coverage",
       "Statement Coverage"
-    ]
-  },
-  {
-    "id": "SWT-24",
-    "category": "Quality Types & Metrics",
-    "question": "Flaky Test là gì và tại sao nó gây khó khăn trong Automation Testing?",
-    "reading_script": "Flaky Test là các kịch bản test tự động lúc pass lúc fail dù code không thay đổi, gây lãng phí thời gian điều tra và làm giảm độ tin cậy của Automation Testing.",
-    "answer": "Flaky Test là test case tự động cho kết quả lúc thành công lúc thất bại trên cùng một phiên bản mã nguồn; nguyên nhân thường do mạng chậm, bất đồng bộ hoặc phụ thuộc thứ tự; nó làm giảm độ tin cậy của bộ test suite.",
-    "target_terms": [
-      "Flaky Test",
-      "Automation Testing"
-    ]
-  },
-  {
-    "id": "SWT-25",
-    "category": "Quality Types & Metrics",
-    "question": "Em sẽ sử dụng những chỉ số nào để đánh giá chất lượng sản phẩm sau quá trình kiểm thử?",
-    "reading_script": "Em dựa vào các chỉ số Defect Density để đo mật độ lỗi, tỷ lệ Test Coverage và các bộ Quality Metrics để quyết định phần mềm đã đủ điều kiện release hay chưa.",
-    "answer": "Các chỉ số quan trọng gồm: Tỷ lệ test case pass/fail, Defect Density (mật độ lỗi trên KLOC), Số lượng bug còn mở theo mức độ Severity/Priority, Tỷ lệ Test Coverage và Defect Reopen Rate.",
-    "target_terms": [
-      "Defect Density",
-      "Test Coverage",
-      "Quality Metrics"
     ]
   }
 ]

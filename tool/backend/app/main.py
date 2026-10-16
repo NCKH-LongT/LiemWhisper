@@ -59,82 +59,14 @@ setup_auth(db)
 
 
 def auto_seed_default_prompts(force: bool = False) -> dict:
-    """Auto-seed default SWT course and published prompts if no courses exist or prompt count changed."""
-    diag = {}
+    """Synchronize the SWT corpus while preserving recordings and custom courses."""
+    from app.prompt_seed import sync_swt_prompts
+
     try:
-        candidates = [
-            Path(__file__).resolve().parent / "swt_qa_prompts.json",
-            Path(__file__).resolve().parent.parent.parent / "scripts" / "swt_qa_prompts.json",
-            Path(__file__).resolve().parent.parent / "scripts" / "swt_qa_prompts.json",
-            Path("tool/scripts/swt_qa_prompts.json"),
-            Path("scripts/swt_qa_prompts.json"),
-        ]
-        json_file = next((p for p in candidates if p.exists()), None)
-        diag["json_file"] = str(json_file) if json_file else None
-        if not json_file:
-            diag["error"] = "No swt_qa_prompts.json found"
-            return diag
-
-        with open(json_file, "r", encoding="utf-8") as f:
-            prompts_data = json.load(f)
-        diag["prompts_count"] = len(prompts_data)
-
-        with db() as c:
-            row = c.execute("SELECT id FROM courses LIMIT 1").fetchone()
-            if row:
-                course_id = row[0]
-                cnt_row = c.execute("SELECT COUNT(*) FROM prompts WHERE course_id=?", (course_id,)).fetchone()
-                current_cnt = cnt_row[0] if cnt_row else 0
-                if not force and current_cnt == len(prompts_data):
-                    diag["status"] = "already_seeded"
-                    diag["course_id"] = str(course_id)
-                    diag["existing_prompts"] = current_cnt
-                    return diag
-                else:
-                    c.execute("DELETE FROM prompts WHERE course_id=?", (course_id,))
-            else:
-                course_id = str(uuid.uuid4())
-                now = int(time.time())
-                c.execute(
-                    "INSERT INTO courses(id, title, description, created_at) VALUES (?,?,?,?)",
-                    (
-                        course_id,
-                        "Kiểm thử phần mềm (Software Testing - SWT)",
-                        "Bộ câu hỏi và câu đọc thu âm thuật ngữ chuyên ngành kiểm thử phần mềm",
-                        now,
-                    )
-                )
-                diag["created_course_id"] = str(course_id)
-
-            now = int(time.time())
-            inserted = 0
-            for item in prompts_data:
-                pid = str(uuid.uuid4())
-                q = item.get("question", "").strip()
-                ans = (item.get("reading_script") or item.get("answer", "")).strip()
-                if q and ans:
-                    text = f"Câu hỏi: {q}\n\nTrả lời: {ans}"
-                else:
-                    text = ans or q
-                terms = json.dumps(item.get("target_terms", []), ensure_ascii=False)
-                category = item.get("category", "")
-                c.execute(
-                    """INSERT INTO prompts(id, course_id, text, language, target_terms, difficulty, category, published, created_at)
-                       VALUES (?,?,?,?,?,?,?,1,?)""",
-                    (pid, course_id, text, "vi-en", terms, "normal", category, now)
-                )
-                inserted += 1
-
-            diag["status"] = "seeded"
-            diag["inserted"] = inserted
-            return diag
+        return sync_swt_prompts(db, force=force)
     except Exception as exc:
-        import traceback
-        diag["status"] = "exception"
-        diag["exception"] = str(exc)
-        diag["traceback"] = traceback.format_exc()
         print(f"Notice: auto_seed_default_prompts exception: {exc}")
-        return diag
+        return {"status": "exception", "exception": str(exc)}
 
 
 auto_seed_default_prompts()
@@ -273,6 +205,9 @@ class GoogleOnboardInput(BaseModel):
     consent: bool
     consent_version: str = Field(default="v1.0", min_length=1, max_length=30)
     participant_code: str = Field(default="", max_length=60)
+    english_level: str = Field(min_length=1, max_length=100)
+    class_name: str = Field(default="", max_length=100)
+    referring_lecturer: str = Field(default="", max_length=150)
     accent_region: str = Field(default="Miền Bắc", max_length=50)
     birth_year: int | None = Field(default=None, ge=1970, le=2015)
     academic_year: str = Field(default="", max_length=50)
@@ -681,6 +616,8 @@ def auth_google(data: GoogleAuthInput, request: Request):
 @app.post("/api/v1/auth/google/onboard")
 def auth_google_onboard(data: GoogleOnboardInput, request: Request):
     """Complete first-time Google participant onboarding with consent and survey."""
+    if not data.english_level.strip():
+        raise HTTPException(422, "Vui lòng chọn trình độ tiếng Anh.")
     if not data.consent:
         raise HTTPException(400, "Xác nhận tự nguyện tham gia (Consent) là bắt buộc.")
 
@@ -703,6 +640,10 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
         survey_data = {
             "email": row["email"],
             "name": row["name"],
+            "student_id": data.participant_code.strip(),
+            "english_level": data.english_level.strip(),
+            "class_name": data.class_name.strip(),
+            "referring_lecturer": data.referring_lecturer.strip(),
             "accent_region": data.accent_region,
             "birth_year": data.birth_year,
             "academic_year": data.academic_year,

@@ -6,7 +6,6 @@ import {
   validateNoSecretInUrl,
   sanitizeApiError,
   sanitizeNotice,
-  maskSecretToken,
   cleanLegacyAdminStorage,
   getAdminSession,
   saveAdminSession,
@@ -244,21 +243,19 @@ export default function Home() {
   // Session & Role management: "guest" | "student" | "admin"
   const [role, setRole] = useState<"guest" | "student" | "admin">("guest");
   const [authRoleTab, setAuthRoleTab] = useState<"student" | "admin">("student");
-  const [studentAuthMode, setStudentAuthMode] = useState<"login" | "signup">("login");
-  const [studentIdentifierInput, setStudentIdentifierInput] = useState("");
+
   const [adminKeyInput, setAdminKeyInput] = useState("");
 
   // Student session data
   const [token, setToken] = useState("");
   const [participantInfo, setParticipantInfo] = useState<ParticipantMe | null>(null);
-  const [showSecretToken, setShowSecretToken] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
 
-  // Signup form state
+  // Google onboarding form state
   const [consent, setConsent] = useState(false);
   const [participantCode, setParticipantCode] = useState("");
-  const [familiarity, setFamiliarity] = useState("Đang học");
-  const [english, setEnglish] = useState("Bình thường");
+  const [className, setClassName] = useState("");
+  const [referringLecturer, setReferringLecturer] = useState("");
+  const [english, setEnglish] = useState("");
   const [mic, setMic] = useState("Tai nghe có mic");
   const [environment, setEnvironment] = useState("Phòng yên tĩnh");
   const [birthYear, setBirthYear] = useState<number>(2004);
@@ -410,7 +407,7 @@ export default function Home() {
       }, 300);
       return () => clearInterval(interval);
     }
-  }, [authRoleTab, studentAuthMode, googleOnboarding]);
+  }, [authRoleTab, googleOnboarding]);
 
   function cleanupMedia() {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -510,93 +507,6 @@ export default function Home() {
 
   // ---------------- AUTHENTICATION HANDLERS ----------------
 
-  async function handleStudentLogin() {
-    const secretToken = studentIdentifierInput.trim();
-    if (!secretToken) {
-      setError("Vui lòng nhập Mã truy cập bí mật của bạn.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const res = await request("/api/v1/auth/student-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: secretToken })
-      });
-      const activeTok = res.token || secretToken;
-      setToken(activeTok);
-      // Retained in localStorage for convenience with documented limitation (no HttpOnly claim)
-      localStorage.setItem("liemwhisper_token", activeTok);
-      localStorage.setItem("liemwhisper_role", "student");
-      setRole("student");
-
-      // Never echo secret access token in user notice
-      const displayName = res.participant_code || "Người tham gia";
-      setNotice(`Đăng nhập thành công. Tài khoản: ${displayName}`);
-
-      await loadParticipantMe(activeTok);
-      const cList = await loadCourses();
-      const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
-      if (cid) {
-        setSelectedCourse(cid);
-        loadTasks(cid, activeTok);
-      }
-    } catch (e) {
-      alertError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleStudentSignup() {
-    if (!consent) {
-      setError("Vui lòng xác nhận sự đồng ý tham gia nghiên cứu.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const res = await request("/api/v1/participants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          consent: true,
-          consent_version: "v1.0",
-          participant_code: participantCode.trim(),
-          familiarity,
-          english_level: english,
-          microphone: mic,
-          environment,
-          birth_year: Number(birthYear) || 2004,
-          academic_year: academicYear,
-          environment_noise: environmentNoise,
-          accent_region: accentRegion
-        })
-      });
-
-      setToken(res.participant_token);
-      localStorage.setItem("liemwhisper_token", res.participant_token);
-      localStorage.setItem("liemwhisper_role", "student");
-      setRole("student");
-
-      // Only display pseudonymous code, never echo raw secret token
-      setNotice(`Đăng ký thành công. Mã định danh: ${res.participant_code || "Mới"}`);
-
-      await loadParticipantMe(res.participant_token);
-      const cList = await loadCourses();
-      const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
-      if (cid) {
-        setSelectedCourse(cid);
-        loadTasks(cid, res.participant_token);
-      }
-    } catch (e) {
-      alertError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleGoogleCallback(credential: string) {
     if (!credential) return;
     setBusy(true);
@@ -617,6 +527,10 @@ export default function Home() {
           suggested_code: res.suggested_code || ""
         });
         setParticipantCode(res.suggested_code || "");
+        setEnglish("");
+        setClassName("");
+        setReferringLecturer("");
+        setConsent(false);
         setGoogleOnboarding(true);
       } else {
         setToken(res.participant_token);
@@ -645,6 +559,10 @@ export default function Home() {
       setError("Vui lòng xác nhận tự nguyện tham gia nghiên cứu (Consent v1.0).");
       return;
     }
+    if (!english) {
+      setError("Vui lòng chọn trình độ tiếng Anh của bạn (hoặc Chưa rõ).");
+      return;
+    }
     if (!googleUser?.temp_token) {
       setError("Phiên Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại Google.");
       return;
@@ -660,6 +578,9 @@ export default function Home() {
           consent: true,
           consent_version: "v1.0",
           participant_code: participantCode.trim(),
+          english_level: english,
+          class_name: className.trim(),
+          referring_lecturer: referringLecturer.trim(),
           accent_region: accentRegion,
           birth_year: Number(birthYear) || 2004,
           academic_year: academicYear,
@@ -1425,19 +1346,59 @@ export default function Home() {
                     </label>
                   </div>
 
-                  {/* Mã sinh viên hoặc Biệt danh (Không bắt buộc) */}
                   <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
-                    Mã sinh viên hoặc Biệt danh <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                    Trình độ tiếng Anh (CEFR) <span style={{ fontWeight: 400, color: "#52525b" }}>(Bắt buộc):</span>
+                    <select name="english_level" required style={styles.field} value={english} onChange={(e) => setEnglish(e.target.value)}>
+                      <option value="" disabled>Chọn trình độ tiếng Anh</option>
+                      <option value="A1">A1</option>
+                      <option value="A2">A2</option>
+                      <option value="B1">B1</option>
+                      <option value="B2">B2</option>
+                      <option value="C1">C1</option>
+                      <option value="C2">C2</option>
+                      <option value="Chưa rõ">Chưa rõ</option>
+                    </select>
+                  </label>
+
+                  {/* Mã sinh viên (Không bắt buộc) */}
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
+                    MSSV / Mã sinh viên <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
                     <input
                       style={styles.field}
+                      name="participant_code"
+                      maxLength={60}
                       placeholder="Ví dụ: SE194007 (để trống hệ thống tự cấp mã ẩn danh)"
                       value={participantCode}
                       onChange={(e) => setParticipantCode(e.target.value)}
                     />
                   </label>
 
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
+                    Lớp <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                    <input
+                      name="class_name"
+                      maxLength={100}
+                      style={styles.field}
+                      placeholder="Ví dụ: SE19"
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                    />
+                  </label>
+
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
+                    Giảng viên giới thiệu <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                    <input
+                      name="referring_lecturer"
+                      maxLength={150}
+                      style={styles.field}
+                      placeholder="Họ tên giảng viên giới thiệu"
+                      value={referringLecturer}
+                      onChange={(e) => setReferringLecturer(e.target.value)}
+                    />
+                  </label>
+
                   {/* Giọng vùng miền & Năm sinh */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12, marginBottom: 14 }}>
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
                       Giọng vùng miền:
                       <select style={styles.field} value={accentRegion} onChange={(e) => setAccentRegion(e.target.value)}>
@@ -1462,7 +1423,7 @@ export default function Home() {
                   </div>
 
                   {/* Khóa / Năm học & Microphone */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12, marginBottom: 14 }}>
                     <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
                       Khóa / Năm học:
                       <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
@@ -1497,14 +1458,14 @@ export default function Home() {
 
                   <button
                     style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", height: 42 }}
-                    disabled={!consent || busy}
+                    disabled={!consent || !english || busy}
                     onClick={handleCompleteGoogleOnboard}
                   >
                     {busy ? "Đang xử lý..." : "Xác nhận & Bắt đầu thu âm"}
                   </button>
                 </div>
               ) : (
-                /* ================= STANDARD LOGIN / SIGNUP WITH GOOGLE ================= */
+                /* ================= GOOGLE-ONLY PARTICIPANT LOGIN ================= */
                 <div>
                   <div style={{ textAlign: "center", marginBottom: 20 }}>
                     <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 6px", color: "#09090b" }}>
@@ -1551,164 +1512,6 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {/* Divider */}
-                  <div style={{ display: "flex", alignItems: "center", margin: "20px 0 16px", color: "#a1a1aa", fontSize: 12 }}>
-                    <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
-                    <span style={{ padding: "0 12px" }}>hoặc dùng mã truy cập bí mật</span>
-                    <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
-                  </div>
-
-                  {/* Mode switcher for manual tokens */}
-                  <div style={{ display: "flex", gap: 4, background: "#f4f4f5", padding: 3, borderRadius: 6, marginBottom: 16 }}>
-                    <button
-                      onClick={() => { setStudentAuthMode("login"); setError(""); }}
-                      style={{
-                        flex: 1,
-                        padding: "6px 10px",
-                        borderRadius: 4,
-                        border: "none",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        background: studentAuthMode === "login" ? "#ffffff" : "transparent",
-                        color: studentAuthMode === "login" ? "#09090b" : "#71717a",
-                        boxShadow: studentAuthMode === "login" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                      }}
-                    >
-                      Đã có mã truy cập
-                    </button>
-                    <button
-                      onClick={() => { setStudentAuthMode("signup"); setError(""); }}
-                      style={{
-                        flex: 1,
-                        padding: "6px 10px",
-                        borderRadius: 4,
-                        border: "none",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        background: studentAuthMode === "signup" ? "#ffffff" : "transparent",
-                        color: studentAuthMode === "signup" ? "#09090b" : "#71717a",
-                        boxShadow: studentAuthMode === "signup" ? "0 1px 2px rgba(0,0,0,0.05)" : "none"
-                      }}
-                    >
-                      Đăng ký không dùng Google
-                    </button>
-                  </div>
-
-                  {/* MODE A: EXISTING LOGIN */}
-                  {studentAuthMode === "login" && (
-                    <div>
-                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                        Mã truy cập bí mật:
-                        <input
-                          style={styles.field}
-                          placeholder="Nhập mã truy cập bí mật (Access Token)"
-                          value={studentIdentifierInput}
-                          onChange={(e) => setStudentIdentifierInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleStudentLogin(); }}
-                        />
-                      </label>
-                      <button
-                        style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 8 }}
-                        disabled={busy}
-                        onClick={handleStudentLogin}
-                      >
-                        Vào phòng thu âm
-                      </button>
-                    </div>
-                  )}
-
-                  {/* MODE B: MANUAL SIGNUP */}
-                  {studentAuthMode === "signup" && (
-                    <div>
-                      <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid #e2e8f0", marginBottom: 14 }}>
-                        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "#1e293b", lineHeight: 1.4 }}>
-                          <input
-                            type="checkbox"
-                            checked={consent}
-                            onChange={(e) => setConsent(e.target.checked)}
-                            style={{ marginTop: 2 }}
-                          />
-                          <span>Tôi xác nhận tự nguyện tham gia thử nghiệm thu âm cho nghiên cứu học thuật LiemWhisper (Consent v1.0).</span>
-                        </label>
-                      </div>
-
-                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 12 }}>
-                        Mã sinh viên hoặc Biệt danh <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
-                        <input
-                          style={styles.field}
-                          placeholder="Ví dụ: SE194007"
-                          value={participantCode}
-                          onChange={(e) => setParticipantCode(e.target.value)}
-                        />
-                      </label>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                          Giọng vùng miền:
-                          <select style={styles.field} value={accentRegion} onChange={(e) => setAccentRegion(e.target.value)}>
-                            <option>Miền Bắc</option>
-                            <option>Miền Trung</option>
-                            <option>Miền Nam</option>
-                          </select>
-                        </label>
-
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                          Năm sinh:
-                          <select style={styles.field} value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
-                            <option value={2006}>2006</option>
-                            <option value={2005}>2005</option>
-                            <option value={2004}>2004</option>
-                            <option value={2003}>2003</option>
-                            <option value={2002}>2002</option>
-                            <option value={2001}>2001</option>
-                            <option value={2000}>2000 trở về trước</option>
-                          </select>
-                        </label>
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                          Khóa / Năm học:
-                          <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
-                            <option>Năm 1</option>
-                            <option>Năm 2</option>
-                            <option>Năm 3</option>
-                            <option>Năm 4</option>
-                            <option>Đã tốt nghiệp / Đi làm</option>
-                          </select>
-                        </label>
-
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
-                          Microphone:
-                          <select style={styles.field} value={mic} onChange={(e) => setMic(e.target.value)}>
-                            <option>Điện thoại</option>
-                            <option>Laptop</option>
-                            <option>Tai nghe có mic</option>
-                            <option>Micro rời</option>
-                          </select>
-                        </label>
-                      </div>
-
-                      <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 16 }}>
-                        Môi trường xung quanh:
-                        <select style={styles.field} value={environmentNoise} onChange={(e) => { setEnvironmentNoise(e.target.value); setEnvironment(e.target.value); }}>
-                          <option>Phòng yên tĩnh</option>
-                          <option>Có tiếng ồn nhẹ</option>
-                          <option>Quán cafe / nhiều tạp âm</option>
-                        </select>
-                      </label>
-
-                      <button
-                        style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 4 }}
-                        disabled={!consent || busy}
-                        onClick={handleStudentSignup}
-                      >
-                        Xác nhận & Bắt đầu thu âm
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1751,7 +1554,7 @@ export default function Home() {
       {/* ========================================================================= */}
       {role === "student" && (
         <>
-          {/* Student Account & Secret Access Token Card */}
+          {/* Student Account Card */}
           <section style={styles.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
               <div>
@@ -1762,48 +1565,10 @@ export default function Home() {
                   Mã định danh: {participantInfo?.participant_code || "Học viên"}
                 </div>
                 <div style={{ fontSize: 12, color: "#71717a", marginTop: 4 }}>
-                  Phiên đăng nhập lưu tạm trong localStorage (không sử dụng HttpOnly cookie).
+                  Tiến độ được lưu theo tài khoản Google. Đăng nhập lại bằng cùng tài khoản để tiếp tục.
                 </div>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Mã truy cập bí mật:</span>
-                <code
-                  style={{
-                    fontFamily: "ui-monospace, monospace",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    background: "#ffffff",
-                    border: "1px solid #cbd5e1",
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    color: "#0f172a"
-                  }}
-                >
-                  {maskSecretToken(token, showSecretToken)}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => setShowSecretToken(!showSecretToken)}
-                  style={{ ...styles.btnSecondary, padding: "4px 8px", fontSize: 12 }}
-                >
-                  {showSecretToken ? "Ẩn" : "Hiện"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (token && typeof navigator !== "undefined" && navigator.clipboard) {
-                      navigator.clipboard.writeText(token).then(() => {
-                        setCopiedToken(true);
-                        setTimeout(() => setCopiedToken(false), 2000);
-                      });
-                    }
-                  }}
-                  style={{ ...styles.btnSecondary, padding: "4px 8px", fontSize: 12 }}
-                >
-                  {copiedToken ? "Đã chép" : "Sao chép"}
-                </button>
-              </div>
             </div>
           </section>
 

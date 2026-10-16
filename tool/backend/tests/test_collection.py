@@ -13,8 +13,7 @@ def setup_test_app(tmp_path, monkeypatch):
     monkeypatch.setenv("STORAGE_BACKEND", "local")
     monkeypatch.setenv("ADMIN_API_KEY", "test-only-admin-secret")
     sys.modules.pop("app.main", None)
-    from app import main
-    importlib.reload(main)
+    main = importlib.import_module("app.main")
     return TestClient(main.app)
 
 
