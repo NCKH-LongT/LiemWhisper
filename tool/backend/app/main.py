@@ -676,7 +676,7 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
 def participant_me(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
     pid = participant(x_participant_token, token)
     with db() as c:
-        row = c.execute("SELECT id, participant_code, consent_version, consent_at, survey FROM participants WHERE id=?", (pid,)).fetchone()
+        row = c.execute("SELECT id, participant_code, consent_version, consent_at, survey, email, name, completed_at FROM participants WHERE id=?", (pid,)).fetchone()
         recs = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()
     if not row:
         raise HTTPException(404, "Participant not found")
@@ -684,9 +684,48 @@ def participant_me(x_participant_token: str | None = Header(None), token: str | 
     return {
         "participant_id": row["id"],
         "participant_code": row["participant_code"],
+        "email": row.get("email", "") or "",
+        "name": row.get("name", "") or "",
         "consent_version": row["consent_version"],
         "total_recordings": recs["count"] if recs else 0,
+        "completed_at": row.get("completed_at", 0) or 0,
         "survey": survey
+    }
+
+@app.post("/api/v1/participants/complete")
+def participant_complete(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
+    """Mark participant recording session as completed and trigger thank-you email."""
+    pid = participant(x_participant_token, token)
+    now = int(time.time())
+    with db() as c:
+        row = c.execute("SELECT id, participant_code, email, name, completed_at FROM participants WHERE id=?", (pid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Participant not found")
+        recs_count = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()["count"]
+        c.execute("UPDATE participants SET completed_at=? WHERE id=?", (now, pid))
+
+    email = (row.get("email") or "").strip()
+    name = (row.get("name") or "").strip()
+    code = (row.get("participant_code") or "").strip()
+
+    email_status = {}
+    if email:
+        from app.mailer import send_thank_you_email
+        email_status = send_thank_you_email(
+            to_email=email,
+            participant_name=name,
+            participant_code=code,
+            total_recordings=recs_count
+        )
+
+    return {
+        "status": "success",
+        "completed": True,
+        "completed_at": now,
+        "total_recordings": recs_count,
+        "email": email,
+        "email_delivery": email_status,
+        "message": "Chúc mừng bạn đã hoàn thành bài thu âm! Thư cảm ơn đã được gửi đến email của bạn."
     }
 
 @app.post("/api/v1/participants/withdraw")

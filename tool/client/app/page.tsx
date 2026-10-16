@@ -42,8 +42,11 @@ type Task = {
 type ParticipantMe = {
   participant_id: string;
   participant_code: string;
+  email?: string;
+  name?: string;
   consent_version: string;
   total_recordings: number;
+  completed_at?: number;
   survey: Record<string, string>;
 };
 
@@ -266,6 +269,8 @@ export default function Home() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedFor, setRecordedFor] = useState<string | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
+  const [isCompletedSession, setIsCompletedSession] = useState(false);
+  const [completionDetails, setCompletionDetails] = useState<{ total: number; email: string } | null>(null);
 
   // Status & loading
   const [busy, setBusy] = useState(false);
@@ -438,6 +443,13 @@ export default function Home() {
         headers: { "x-participant-token": activeToken }
       });
       setParticipantInfo(data);
+      if (data.completed_at && data.completed_at > 0) {
+        setIsCompletedSession(true);
+        setCompletionDetails({
+          total: data.total_recordings,
+          email: data.email || data.survey?.email || ""
+        });
+      }
       if (selectedCourse) {
         loadTasks(selectedCourse, activeToken);
       }
@@ -622,6 +634,42 @@ export default function Home() {
     }
   }
 
+  async function handleCompleteSession() {
+    const recordedCount = tasks.filter((t) => Boolean(t.recording_id)).length;
+    if (recordedCount === 0) {
+      alertError("Bạn chưa thu âm câu nào. Vui lòng ghi âm ít nhất một câu trước khi hoàn thành.");
+      return;
+    }
+
+    const email = participantInfo?.email || participantInfo?.survey?.email || "";
+    const confirmMsg =
+      recordedCount < tasks.length
+        ? `Bạn đã hoàn thành ${recordedCount}/${tasks.length} câu. Bạn có chắc chắn muốn kết thúc bài thi ngay bây giờ? Thư cảm ơn sẽ được gửi đến ${email || "email của bạn"}.`
+        : `Bạn đã hoàn thành toàn bộ ${recordedCount}/${tasks.length} câu hỏi. Xác nhận kết thúc bài thi và nhận email cảm ơn từ ban nghiên cứu?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await request("/api/v1/participants/complete", {
+        method: "POST",
+        headers: { "x-participant-token": token }
+      });
+      setIsCompletedSession(true);
+      setCompletionDetails({
+        total: res.total_recordings || recordedCount,
+        email: res.email || email
+      });
+      setNotice("Chúc mừng bạn đã hoàn tất bài thi! Thư cảm ơn đã được gửi đến email của bạn.");
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleLogout() {
     cleanupMedia();
     if (role === "admin" && adminKey) {
@@ -646,6 +694,8 @@ export default function Home() {
     setDriveStatus(null);
     setTasks([]);
     clearRecordedAudio();
+    setIsCompletedSession(false);
+    setCompletionDetails(null);
     setNotice("Đã kết thúc phiên làm việc.");
   }
 
@@ -826,8 +876,7 @@ export default function Home() {
         )
       );
 
-      // Do not claim both saved until synced
-      setNotice(syncInfo.description);
+      setNotice(`Đã lưu bản ghi âm câu ${currentIndex + 1} thành công!`);
 
       if (currentIndex < tasks.length - 1) {
         setCurrentIndex((i) => i + 1);
@@ -1560,31 +1609,103 @@ export default function Home() {
                     <RefreshIcon size={13} />
                     <span>Làm mới câu hỏi</span>
                   </button>
-                  <button
-                    style={styles.btnSecondary}
-                    onClick={refreshTasksSyncStatus}
-                    disabled={syncRefreshing || isRecording}
-                    title="Làm mới trạng thái đồng bộ mà không hủy bản thu âm đang ghi"
-                  >
-                    <RefreshIcon size={13} />
-                    <span>{syncRefreshing ? "Đang đồng bộ..." : "Cập nhật đồng bộ Drive"}</span>
-                  </button>
-                </div>
+                  </div>
               </div>
 
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 13, color: "#52525b" }}>
-                  Tiến độ: <strong style={{ color: "#09090b" }}>{completedCount} / {tasks.length}</strong> câu ({progressPercent}%)
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 13, color: "#52525b" }}>
+                    Tiến độ: <strong style={{ color: "#09090b" }}>{completedCount} / {tasks.length}</strong> câu ({progressPercent}%)
+                  </div>
+                  <div style={{ width: 160, height: 6, background: "#e4e4e7", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
+                    <div style={{ width: `${progressPercent}%`, height: "100%", background: "#16a34a", transition: "width 0.3s ease" }} />
+                  </div>
                 </div>
-                <div style={{ width: 180, height: 6, background: "#e4e4e7", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
-                  <div style={{ width: `${progressPercent}%`, height: "100%", background: "#16a34a", transition: "width 0.3s ease" }} />
-                </div>
+
+                {completedCount > 0 && (
+                  <button
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: completedCount === tasks.length ? "#16a34a" : "#0f172a",
+                      color: "#ffffff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      boxShadow: completedCount === tasks.length ? "0 2px 6px rgba(22, 163, 74, 0.3)" : "none",
+                      transition: "all 0.15s ease"
+                    }}
+                    disabled={busy || isRecording}
+                    onClick={handleCompleteSession}
+                    title="Nộp và kết thúc bài thu âm để nhận thư cảm ơn"
+                  >
+                    <CheckIcon size={14} color="#ffffff" />
+                    <span>Hoàn thành bài thu âm</span>
+                  </button>
+                )}
               </div>
             </div>
           </section>
 
-          {/* FOCUS RECORDING CARD */}
-          {tasks.length === 0 ? (
+          {isCompletedSession ? (
+            <section style={{ ...styles.card, padding: "44px 24px", textAlign: "center", border: "1.5px solid #86efac", background: "#f0fdf4", boxShadow: "0 4px 14px rgba(22, 163, 74, 0.08)" }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#16a34a", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <CheckIcon size={32} color="#ffffff" />
+              </div>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: "#14532d", margin: "0 0 10px" }}>
+                Chúc mừng bạn đã hoàn thành bài thi!
+              </h2>
+              <p style={{ fontSize: 15, color: "#166534", maxWidth: 540, margin: "0 auto 24px", lineHeight: 1.6 }}>
+                Thay mặt nhóm nghiên cứu đề tài <strong>LiemWhisper</strong>, xin chân thành cảm ơn bạn đã dành thời gian đóng góp giọng nói quý báu cho bộ ngữ liệu khoa học.
+              </p>
+
+              <div style={{ maxWidth: 460, margin: "0 auto 24px", background: "#ffffff", borderRadius: 10, padding: 20, border: "1px solid #dcfce7", textAlign: "left", boxShadow: "0 2px 4px rgba(0,0,0,0.03)" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#14532d", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Thông tin xác nhận đóng góp
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f0fdf4", fontSize: 13 }}>
+                  <span style={{ color: "#64748b" }}>Mã sinh viên / Participant:</span>
+                  <strong style={{ color: "#0f172a" }}>{participantInfo?.participant_code || "N/A"}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f0fdf4", fontSize: 13 }}>
+                  <span style={{ color: "#64748b" }}>Số câu đã hoàn thành:</span>
+                  <strong style={{ color: "#16a34a" }}>{completionDetails?.total ?? completedCount} / {tasks.length} câu</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: 13 }}>
+                  <span style={{ color: "#64748b" }}>Email nhận thư cảm ơn:</span>
+                  <strong style={{ color: "#0f172a" }}>{completionDetails?.email || participantInfo?.email || participantInfo?.survey?.email || "Email Google của bạn"}</strong>
+                </div>
+              </div>
+
+              <div style={{ background: "#dcfce7", color: "#14532d", padding: "12px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, maxWidth: 500, margin: "0 auto 28px" }}>
+                ✉️ Thư cảm ơn chính thức đã được gửi đến hộp thư Gmail của bạn. Vui lòng kiểm tra hộp thư đến (hoặc hòm thư Spam/Promotions nếu chưa thấy).
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  style={styles.btnSecondary}
+                  onClick={() => setIsCompletedSession(false)}
+                >
+                  <RefreshIcon size={14} />
+                  <span>Xem lại các câu đã thu âm</span>
+                </button>
+                <button
+                  style={{ ...styles.btnSecondary, color: "#b91c1c", borderColor: "#fca5a5" }}
+                  onClick={handleLogout}
+                >
+                  <LogoutIcon size={14} />
+                  <span>Đăng xuất & Thoát</span>
+                </button>
+              </div>
+            </section>
+          ) : (
+            <>
+              {/* FOCUS RECORDING CARD */}
+              {tasks.length === 0 ? (
             <div style={{ ...styles.card, textAlign: "center", padding: "40px 20px" }}>
               <p style={{ color: "#71717a", fontSize: 14 }}>Chưa có câu hỏi nào trong chủ đề này.</p>
             </div>
@@ -1597,43 +1718,9 @@ export default function Home() {
                     Câu {currentIndex + 1} trên {tasks.length}
                   </span>
                   {currentTask.recording_id ? (
-                    <>
-                      <span style={{ fontSize: 12, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                        Đã ghi âm
-                      </span>
-                      {(() => {
-                        const syncInfo = getDriveSyncStatusInfo(currentTask.drive_sync_status, currentTask.drive_sync_message);
-                        return (
-                          <span
-                            title={syncInfo.description}
-                            style={{
-                              fontSize: 12,
-                              padding: "2px 8px",
-                              borderRadius: 4,
-                              fontWeight: 600,
-                              background:
-                                syncInfo.badgeStyle === "synced"
-                                  ? "#dcfce7"
-                                  : syncInfo.badgeStyle === "pending"
-                                  ? "#fef3c7"
-                                  : syncInfo.badgeStyle === "error"
-                                  ? "#fee2e2"
-                                  : "#f4f4f5",
-                              color:
-                                syncInfo.badgeStyle === "synced"
-                                  ? "#166534"
-                                  : syncInfo.badgeStyle === "pending"
-                                  ? "#92400e"
-                                  : syncInfo.badgeStyle === "error"
-                                  ? "#991b1b"
-                                  : "#71717a"
-                            }}
-                          >
-                            {syncInfo.label}
-                          </span>
-                        );
-                      })()}
-                    </>
+                    <span style={{ fontSize: 12, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                      Đã ghi âm
+                    </span>
                   ) : (
                     <span style={{ fontSize: 12, background: "#f4f4f5", color: "#71717a", padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>
                       Chưa ghi âm
@@ -1897,19 +1984,42 @@ export default function Home() {
             </section>
           ) : null}
 
-          {/* CELEBRATION CARD WHEN ALL COMPLETED */}
-          {tasks.length > 0 && completedCount === tasks.length && (
-            <div style={{ ...styles.card, background: "#f0fdf4", border: "1px solid #bbf7d0", textAlign: "center", padding: "28px 20px" }}>
-              <h3 style={{ color: "#166534", fontSize: 17, margin: "0 0 8px" }}>Hoàn thành phần thu âm</h3>
-              <p style={{ color: "#15803d", fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                Bạn đã nộp đủ bản ghi âm cho gói câu hỏi này. Dữ liệu đã được lưu trữ an toàn trên hệ thống phục vụ công tác nghiên cứu khoa học.
-              </p>
-              <div style={{ marginTop: 14 }}>
-                <span style={{ fontSize: 12, padding: "4px 10px", background: "#dcfce7", color: "#166534", borderRadius: 4, fontWeight: 600 }}>
-                  Mã định danh: {participantInfo?.participant_code}
-                </span>
-              </div>
-            </div>
+              {/* PROMPT WHEN ALL COMPLETED */}
+              {tasks.length > 0 && completedCount === tasks.length && (
+                <div style={{ ...styles.card, background: "#f0fdf4", border: "1.5px solid #86efac", textAlign: "center", padding: "32px 20px", marginTop: 20 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#16a34a", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <CheckIcon size={24} color="#ffffff" />
+                  </div>
+                  <h3 style={{ color: "#14532d", fontSize: 18, margin: "0 0 8px", fontWeight: 700 }}>
+                    Bạn đã hoàn thành đủ {tasks.length} / {tasks.length} câu hỏi!
+                  </h3>
+                  <p style={{ color: "#166534", fontSize: 14, margin: "0 auto 18px", maxWidth: 500, lineHeight: 1.5 }}>
+                    Bấm nút bên dưới để kết thúc bài thi. Hệ thống sẽ chính thức ghi nhận và tự động gửi email cảm ơn đến bạn.
+                  </p>
+                  <button
+                    style={{
+                      padding: "11px 26px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#16a34a",
+                      color: "#ffffff",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      boxShadow: "0 4px 12px rgba(22, 163, 74, 0.3)"
+                    }}
+                    disabled={busy}
+                    onClick={handleCompleteSession}
+                  >
+                    <CheckIcon size={16} color="#ffffff" />
+                    <span>Hoàn thành bài thi & Nhận email cảm ơn</span>
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           {/* Account withdrawal option */}
