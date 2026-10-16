@@ -587,9 +587,10 @@ class GoogleDriveClient:
         except Exception:
             raise RuntimeError("Failed to allocate Google Drive file ID")
 
-    def put(self, file_id: str, name: str, body: bytes, mime: str) -> None:
+    def put(self, file_id: str, name: str, body: bytes, mime: str, parent_id: str | None = None) -> None:
         token = self._get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
+        target_folder = parent_id or self.folder_id
 
         # Idempotent check: see if file already exists
         existing_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,parents,trashed"
@@ -597,9 +598,6 @@ class GoogleDriveClient:
             check_res = requests.request("GET", existing_url, headers=headers, timeout=15.0)
             if check_res.status_code == 200:
                 item = check_res.json()
-                parents = item.get("parents", [])
-                if parents and self.folder_id not in parents:
-                    raise ValueError(f"File ID {file_id} belongs to an unrelated folder/location")
                 patch_url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
                 upload_res = requests.request(
                     "PATCH",
@@ -609,6 +607,26 @@ class GoogleDriveClient:
                     timeout=15.0,
                 )
                 upload_res.raise_for_status()
+
+                # Update metadata (name & parents) if needed
+                patch_meta = {}
+                if item.get("name") != name:
+                    patch_meta["name"] = name
+                parents = item.get("parents", [])
+                move_params = {}
+                if target_folder not in parents:
+                    move_params["addParents"] = target_folder
+                    if parents:
+                        move_params["removeParents"] = ",".join(parents)
+                if patch_meta or move_params:
+                    requests.request(
+                        "PATCH",
+                        f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                        headers={**headers, "Content-Type": "application/json"},
+                        params=move_params,
+                        json=patch_meta,
+                        timeout=15.0
+                    )
                 return
             elif check_res.status_code != 404:
                 check_res.raise_for_status()
@@ -621,7 +639,7 @@ class GoogleDriveClient:
         metadata = json.dumps({
             "id": file_id,
             "name": name,
-            "parents": [self.folder_id],
+            "parents": [target_folder],
             "mimeType": mime,
         }).encode("utf-8")
 
@@ -642,6 +660,106 @@ class GoogleDriveClient:
         upload_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
         res = requests.request("POST", upload_url, headers=upload_headers, data=payload, timeout=15.0)
         res.raise_for_status()
+
+    def get_or_create_subfolder(self, folder_name: str, parent_id: str | None = None) -> str:
+        target_parent = parent_id or self.folder_id
+        token = self._get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        escaped_name = folder_name.replace("'", "\\'")
+        q = f"'{target_parent}' in parents and name = '{escaped_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        try:
+            res = requests.request("GET", "https://www.googleapis.com/drive/v3/files", headers=headers, params={"q": q, "fields": "files(id, name)"}, timeout=15.0)
+            if res.status_code == 200:
+                files = res.json().get("files", [])
+                if files:
+                    return files[0]["id"]
+        except Exception:
+            pass
+
+        create_res = requests.request(
+            "POST",
+            "https://www.googleapis.com/drive/v3/files",
+            headers={**headers, "Content-Type": "application/json"},
+            json={
+                "name": folder_name,
+                "parents": [target_parent],
+                "mimeType": "application/vnd.google-apps.folder",
+            },
+            timeout=15.0,
+        )
+        create_res.raise_for_status()
+        return create_res.json()["id"]
+
+    def upload_or_update_file(self, filename: str, body: bytes, mime: str = "text/csv; charset=utf-8", parent_id: str | None = None) -> str:
+        target_parent = parent_id or self.folder_id
+        token = self._get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        escaped_name = filename.replace("'", "\\'")
+        q = f"'{target_parent}' in parents and name = '{escaped_name}' and trashed = false"
+        existing_id = None
+        try:
+            res = requests.request("GET", "https://www.googleapis.com/drive/v3/files", headers=headers, params={"q": q, "fields": "files(id, name)"}, timeout=15.0)
+            if res.status_code == 200:
+                files = res.json().get("files", [])
+                if files:
+                    existing_id = files[0]["id"]
+        except Exception:
+            pass
+
+        if existing_id:
+            patch_url = f"https://www.googleapis.com/upload/drive/v3/files/{existing_id}?uploadType=media"
+            upload_res = requests.request(
+                "PATCH",
+                patch_url,
+                headers={**headers, "Content-Type": mime},
+                data=body,
+                timeout=15.0,
+            )
+            upload_res.raise_for_status()
+            return existing_id
+
+        boundary = f"=====boundary_{secrets.token_hex(16)}====="
+        metadata = json.dumps({
+            "name": filename,
+            "parents": [target_parent],
+            "mimeType": mime,
+        }).encode("utf-8")
+
+        payload = (
+            f"--{boundary}\r\n"
+            "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        ).encode("utf-8") + metadata + (
+            f"\r\n--{boundary}\r\n"
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode("utf-8") + body + (
+            f"\r\n--{boundary}--\r\n"
+        ).encode("utf-8")
+
+        upload_headers = {
+            **headers,
+            "Content-Type": f"multipart/related; boundary={boundary}",
+        }
+        upload_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
+        create_res = requests.request("POST", upload_url, headers=upload_headers, data=payload, timeout=15.0)
+        create_res.raise_for_status()
+        return create_res.json()["id"]
+
+    def move_and_rename_file(self, file_id: str, new_name: str, target_parent_id: str, old_parent_id: str | None = None) -> bool:
+        token = self._get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        old_parent = old_parent_id or self.folder_id
+        try:
+            res = requests.request(
+                "PATCH",
+                f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                headers={**headers, "Content-Type": "application/json"},
+                params={"addParents": target_parent_id, "removeParents": old_parent},
+                json={"name": new_name},
+                timeout=15.0
+            )
+            return res.status_code == 200
+        except Exception:
+            return False
 
     def download(self, file_id: str) -> bytes:
         token = self._get_access_token()

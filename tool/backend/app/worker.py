@@ -2,8 +2,11 @@
 Handles idempotent uploads with preallocated Drive IDs, SHA256 integrity verification,
 retry loops, withdrawal race conditions, and persistent deletion tombstones.
 """
+import csv
 import hashlib
+import io
 import logging
+import re
 import time
 import uuid
 from typing import Any, Callable
@@ -87,10 +90,15 @@ def process_outbox(
                     continue
 
                 # Check if recording still exists (withdrawal race)
-                rec = c.execute(
-                    "SELECT id, sha256, format, mime, storage_key FROM recordings WHERE id=?",
-                    (rec_id,)
-                ).fetchone()
+                rec = c.execute("""
+                    SELECT r.id, r.participant_id, r.prompt_id, r.sha256, r.format, r.mime, r.storage_key,
+                           p.participant_code, p.name as participant_name, p.email as participant_email,
+                           pr.course_id
+                    FROM recordings r
+                    LEFT JOIN participants p ON p.id = r.participant_id
+                    LEFT JOIN prompts pr ON pr.id = r.prompt_id
+                    WHERE r.id = ?
+                """, (rec_id,)).fetchone()
                 if not rec:
                     c.execute("UPDATE drive_sync_jobs SET status='cancelled', updated_at=? WHERE id=?", (now, job_id))
                     if file_id:
@@ -99,6 +107,34 @@ def process_outbox(
                         except Exception:
                             pass
                     continue
+
+                # Question order within the course
+                q_order = 1
+                if rec and rec["prompt_id"] and rec["course_id"]:
+                    order_row = c.execute("""
+                        SELECT COUNT(*) FROM prompts
+                        WHERE course_id = ? AND created_at <= (SELECT created_at FROM prompts WHERE id = ?)
+                    """, (rec["course_id"], rec["prompt_id"])).fetchone()
+                    if order_row and order_row[0] > 0:
+                        q_order = order_row[0]
+
+                code = (rec["participant_code"] or "").strip() if rec else ""
+                if not code and rec and rec["participant_id"]:
+                    code = f"SV_{rec['participant_id'][:6]}"
+                name = (rec["participant_name"] or "").strip() if rec else ""
+                email = (rec["participant_email"] or "").strip() if rec else ""
+
+                if code and name:
+                    folder_name = f"{code} - {name}"
+                elif code and email:
+                    folder_name = f"{code} - {email}"
+                elif code:
+                    folder_name = f"{code}"
+                else:
+                    folder_name = "Chua_phan_loai"
+
+                cau_label = f"Cau{q_order:02d}"
+                filename = f"{code}_{cau_label}_{rec_id[:8]}.{rec['format']}" if code else f"{rec_id}.{rec['format']}"
 
                 # Preallocate Drive ID if not yet allocated, and persist immediately before uploading
                 if not file_id:
@@ -140,10 +176,20 @@ def process_outbox(
                     )
                     continue
 
+            # Subfolder in Drive for participant
+            parent_folder_id = None
+            if hasattr(drive_client, "get_or_create_subfolder"):
+                try:
+                    parent_folder_id = drive_client.get_or_create_subfolder(folder_name)
+                except Exception as exc:
+                    logger.warning("Could not create subfolder '%s': %s", folder_name, exc)
+
             # Perform Drive upload
             try:
-                filename = f"{rec_id}.{rec['format']}"
-                drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"])
+                if parent_folder_id and hasattr(drive_client, "get_or_create_subfolder"):
+                    drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"], parent_id=parent_folder_id)
+                else:
+                    drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"])
 
                 # Verify SHA256 by downloading back
                 downloaded = drive_client.download(file_id)
@@ -241,5 +287,167 @@ def process_all_outbox(
         if count == 0:
             break
         total += count
+
+    # If real Drive client is available, organize existing files into subfolders and update CSV index
+    client = drive_client
+    if client is None:
+        try:
+            from app.drive import get_drive_client
+            client = get_drive_client(db_factory)
+        except Exception:
+            pass
+
+    if client and hasattr(client, "upload_or_update_file"):
+        try:
+            organize_existing_drive_files(db_factory, client)
+            sync_drive_manifest_csv(db_factory, client)
+        except Exception as exc:
+            logger.warning("Error organizing Drive files / updating manifest CSV: %s", exc)
+
     return total
+
+
+def sync_drive_manifest_csv(db_factory: Callable[[], Any], drive_client: Any) -> None:
+    """Creates or updates a clean UTF-8 CSV lookup manifest directly in the Google Drive root folder."""
+    if not hasattr(drive_client, "upload_or_update_file"):
+        return
+
+    with db_factory() as c:
+        rows = c.execute("""
+            SELECT r.id as recording_id,
+                   COALESCE(p.participant_code, '') as participant_code,
+                   COALESCE(p.name, '') as participant_name,
+                   COALESCE(p.email, '') as participant_email,
+                   COALESCE(pr.text, '') as prompt_text,
+                   r.duration_seconds,
+                   r.format,
+                   r.created_at,
+                   r.drive_file_id
+            FROM recordings r
+            LEFT JOIN participants p ON p.id = r.participant_id
+            LEFT JOIN prompts pr ON pr.id = r.prompt_id
+            WHERE r.drive_sync_status = 'synced' AND r.drive_file_id IS NOT NULL
+            ORDER BY p.participant_code ASC, r.created_at ASC
+        """).fetchall()
+
+    if not rows:
+        return
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "STT",
+        "Mã Thí Sinh",
+        "Họ và Tên",
+        "Email",
+        "Thư Mục Drive",
+        "Tên File Drive",
+        "Câu Hỏi",
+        "Thời Lượng (giây)",
+        "Định Dạng",
+        "Thời Gian Thu Âm",
+        "Link Nghe Trực Tiếp Trên Drive"
+    ])
+
+    for idx, r in enumerate(rows, 1):
+        code = (r["participant_code"] or "").strip() or "Chua_cap_ma"
+        name = (r["participant_name"] or "").strip()
+        email = (r["participant_email"] or "").strip()
+        folder_display = f"{code} - {name}" if name else f"{code} - {email}" if email else code
+        short_id = (r["recording_id"] or "")[:8]
+        file_name_display = f"{code}_{short_id}.{r['format']}"
+        dt_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r['created_at'])) if r['created_at'] else ''
+        file_id = r['drive_file_id'] or ''
+        drive_link = f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
+
+        writer.writerow([
+            idx,
+            code,
+            name or 'Không tên',
+            email,
+            folder_display,
+            file_name_display,
+            (r['prompt_text'] or '').replace('\n', ' ')[:100],
+            r['duration_seconds'],
+            r['format'],
+            dt_str,
+            drive_link
+        ])
+
+    csv_bytes = ("\ufeff" + buf.getvalue()).encode("utf-8")
+    try:
+        drive_client.upload_or_update_file(
+            filename="Danh_sach_ban_thu.csv",
+            body=csv_bytes,
+            mime="text/csv; charset=utf-8"
+        )
+    except Exception as exc:
+        logger.warning("Failed to update Danh_sach_ban_thu.csv on Drive: %s", exc)
+
+
+def organize_existing_drive_files(db_factory: Callable[[], Any], drive_client: Any) -> int:
+    """Moves and renames existing Drive files into their participant subfolders."""
+    if not hasattr(drive_client, "move_and_rename_file") or not hasattr(drive_client, "get_or_create_subfolder"):
+        return 0
+
+    organized = 0
+    with db_factory() as c:
+        rows = c.execute("""
+            SELECT r.id as rec_id, r.participant_id, r.prompt_id, r.format, r.drive_file_id,
+                   p.participant_code, p.name as participant_name, p.email as participant_email,
+                   pr.course_id
+            FROM recordings r
+            LEFT JOIN participants p ON p.id = r.participant_id
+            LEFT JOIN prompts pr ON pr.id = r.prompt_id
+            WHERE r.drive_sync_status = 'synced' AND r.drive_file_id IS NOT NULL
+        """).fetchall()
+
+    subfolder_cache = {}
+
+    for r in rows:
+        rec_id = r["rec_id"]
+        file_id = r["drive_file_id"]
+        if not file_id:
+            continue
+
+        code = (r["participant_code"] or "").strip() or f"SV{r['participant_id'][:6]}"
+        name = (r["participant_name"] or "").strip()
+        email = (r["participant_email"] or "").strip()
+
+        if name:
+            folder_name = f"{code} - {name}"
+        elif email:
+            folder_name = f"{code} - {email}"
+        else:
+            folder_name = f"{code}"
+
+        if folder_name not in subfolder_cache:
+            try:
+                subfolder_cache[folder_name] = drive_client.get_or_create_subfolder(folder_name)
+            except Exception:
+                continue
+        subfolder_id = subfolder_cache[folder_name]
+
+        # Calculate question order
+        q_order = 1
+        with db_factory() as c:
+            if r["prompt_id"] and r["course_id"]:
+                order_row = c.execute("""
+                    SELECT COUNT(*) FROM prompts
+                    WHERE course_id = ? AND created_at <= (SELECT created_at FROM prompts WHERE id = ?)
+                """, (r["course_id"], r["prompt_id"])).fetchone()
+                if order_row and order_row[0] > 0:
+                    q_order = order_row[0]
+
+        cau_label = f"Cau{q_order:02d}"
+        new_filename = f"{code}_{cau_label}_{rec_id[:8]}.{r['format']}"
+
+        try:
+            ok = drive_client.move_and_rename_file(file_id=file_id, new_name=new_filename, target_parent_id=subfolder_id)
+            if ok:
+                organized += 1
+        except Exception:
+            pass
+
+    return organized
 
