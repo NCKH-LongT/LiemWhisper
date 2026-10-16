@@ -869,7 +869,7 @@ async def upload_recording(
             c.execute("""
                 INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
                                        duration_seconds, format, status, created_at, drive_sync_status, client_ip)
-                VALUES (?,?,?,?,?,?,?,?,?,'pending_review',?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,'approved',?,?,?)
             """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status, client_ip))
         except Exception as exc:
             msg = str(exc)
@@ -892,7 +892,7 @@ async def upload_recording(
         "format": ext,
         "bytes": len(body),
         "duration_seconds": duration,
-        "status": "pending_review",
+        "status": "approved",
         "drive_sync_status": initial_sync_status,
         "message": "Nộp bản ghi thành công"
     }
@@ -1045,7 +1045,7 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
 
         recs_total_row = c.execute("SELECT COUNT(*) FROM recordings").fetchone()
         recs_total = recs_total_row[0] if recs_total_row else 0
-        recs_app_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='approved'").fetchone()
+        recs_app_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status != 'rejected'").fetchone()
         recs_approved = recs_app_row[0] if recs_app_row else 0
         recs_rej_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='rejected'").fetchone()
         recs_rejected = recs_rej_row[0] if recs_rej_row else 0
@@ -1054,7 +1054,7 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
         recs_pen_row = c.execute("SELECT COUNT(*) FROM recordings WHERE status='pending_review'").fetchone()
         recs_pending = recs_pen_row[0] if recs_pen_row else 0
 
-        app_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings WHERE status='approved'").fetchone()
+        app_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings WHERE status != 'rejected'").fetchone()
         approved_duration = app_dur_row[0] if app_dur_row else 0
         tot_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings").fetchone()
         total_duration = tot_dur_row[0] if tot_dur_row else 0
@@ -1063,7 +1063,7 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
             SELECT c.id, c.title,
                    COUNT(DISTINCT p.id) as prompts_count,
                    COUNT(r.id) as recordings_count,
-                   SUM(CASE WHEN r.status='approved' THEN 1 ELSE 0 END) as approved_count
+                   SUM(CASE WHEN r.status != 'rejected' THEN 1 ELSE 0 END) as approved_count
             FROM courses c
             LEFT JOIN prompts p ON p.course_id = c.id
             LEFT JOIN recordings r ON r.prompt_id = p.id
@@ -1105,7 +1105,7 @@ def get_approved_dataset_rows():
             JOIN prompts p ON p.id = r.prompt_id
             JOIN courses c ON c.id = p.course_id
             JOIN participants part ON part.id = r.participant_id
-            WHERE r.status = 'approved'
+            WHERE r.status != 'rejected'
               AND (? != 'sql_drive' OR r.drive_sync_status = 'synced')
             ORDER BY r.created_at ASC
         """, (STORAGE,)).fetchall()

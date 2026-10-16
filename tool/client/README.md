@@ -12,7 +12,7 @@ Browse http://localhost:3000 (requires backend started at 8000).
 - Consent checkbox and short survey; server issues a pseudonymous participant token.
 - Course list and published prompts assigned from API.
 - Browser MediaRecorder (Chrome/Edge WebM/Opus), playback, re-record and one upload per prompt.
-- Basic admin tools: create courses, create/publish prompts, list review items and submit verbatim review.
+- Basic admin tools: create courses, create/publish prompts, monitor progress and export datasets.
 
 ### Known limitations / before real study
 - Prototype admin key is entered in the browser: unsuitable for public deployment; replace with secure session-based RBAC.

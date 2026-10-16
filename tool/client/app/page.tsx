@@ -71,22 +71,6 @@ type AdminStats = {
   }>;
 };
 
-type ReviewItem = {
-  id: string;
-  prompt_id: string;
-  text: string;
-  target_terms?: string[];
-  course_title: string;
-  participant_code: string;
-  status: string;
-  transcript: string | null;
-  reviewer_notes: string | null;
-  duration_seconds: number;
-  bytes: number;
-  format: string;
-  created_at: number;
-};
-
 // --- Clean SVG Icons (Replacing all emojis) ---
 
 function MicIcon({ size = 16, color = "currentColor" }: { size?: number; color?: string }) {
@@ -279,7 +263,7 @@ export default function Home() {
 
   // Admin state (Memory only, never persisted to localStorage)
   const [adminKey, setAdminKey] = useState("");
-  const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "reviews" | "export">("stats");
+  const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "export">("stats");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [driveStatus, setDriveStatus] = useState<DriveStatusResponse | null>(null);
   const [adminCourses, setAdminCourses] = useState<any[]>([]);
@@ -288,10 +272,6 @@ export default function Home() {
   const [bulkCourseId, setBulkCourseId] = useState("");
   const [bulkText, setBulkText] = useState("");
   const [bulkPublish, setBulkPublish] = useState(true);
-  const [reviewList, setReviewList] = useState<ReviewItem[]>([]);
-  const [reviewFilterStatus, setReviewFilterStatus] = useState("pending_review");
-  const [reviewTranscripts, setReviewTranscripts] = useState<Record<string, string>>({});
-  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   // MediaRecorder & AudioContext refs
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -868,7 +848,7 @@ export default function Home() {
             ? {
                 ...t,
                 recording_id: returnedRecId,
-                status: res.status || "pending_review",
+                status: res.status || "approved",
                 drive_sync_status: driveSyncStatus,
                 drive_sync_message: driveSyncMsg
               }
@@ -983,48 +963,6 @@ export default function Home() {
       alertError(e);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function loadReviews() {
-    if (!adminKey) return;
-    setBusy(true);
-    try {
-      const url = `/api/v1/admin/recordings?status=${encodeURIComponent(reviewFilterStatus)}`;
-      const data = await request(url, {
-        headers: { "x-admin-key": adminKey }
-      });
-      setReviewList(data);
-      const draftMap: Record<string, string> = {};
-      data.forEach((item: ReviewItem) => {
-        draftMap[item.id] = item.transcript || item.text;
-      });
-      setReviewTranscripts(draftMap);
-    } catch (e) {
-      alertError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitReview(recordingId: string, status: "approved" | "rejected" | "rerecord") {
-    try {
-      await request(`/api/v1/admin/recordings/${recordingId}/review`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": adminKey
-        },
-        body: JSON.stringify({
-          status,
-          transcript: reviewTranscripts[recordingId] || "",
-          notes: reviewNotes[recordingId] || ""
-        })
-      });
-      setNotice(`Đã lưu trạng thái bản ghi: ${status}`);
-      await loadReviews();
-    } catch (e) {
-      alertError(e);
     }
   }
 
@@ -1521,7 +1459,7 @@ export default function Home() {
             <div style={styles.card}>
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px", color: "#09090b" }}>Đăng nhập Quản trị viên</h2>
               <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
-                Dành cho giảng viên và nhóm nghiên cứu để quản lý danh sách câu hỏi, kiểm duyệt âm thanh và xuất bộ dữ liệu.
+                Dành cho giảng viên và nhóm nghiên cứu để quản lý danh sách câu hỏi, theo dõi tiến độ và xuất bộ dữ liệu.
               </p>
 
               <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
@@ -2091,22 +2029,6 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "reviews" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "reviews" ? "#09090b" : "#71717a",
-                    boxShadow: adminSubTab === "reviews" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
-                  }}
-                  onClick={() => { setAdminSubTab("reviews"); loadReviews(); }}
-                >
-                  Kiểm duyệt âm thanh
-                </button>
-                <button
-                  style={{
-                    padding: "7px 14px",
-                    borderRadius: 6,
-                    border: "none",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: 13,
                     background: adminSubTab === "export" ? "#ffffff" : "transparent",
                     color: adminSubTab === "export" ? "#09090b" : "#71717a",
                     boxShadow: adminSubTab === "export" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
@@ -2123,7 +2045,6 @@ export default function Home() {
                   loadAdminStats();
                   loadAdminCourses();
                   loadDriveStatus();
-                  if (adminSubTab === "reviews") loadReviews();
                 }}
               >
                 <RefreshIcon size={13} />
@@ -2149,17 +2070,13 @@ export default function Home() {
                   <div style={{ fontSize: 12, color: "#64748b" }}>Người tham gia</div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_participants}</div>
                 </div>
-                <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Bản ghi đã nộp</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_recordings}</div>
-                </div>
                 <div style={{ background: "#f0fdf4", padding: 14, borderRadius: 8, border: "1px solid #bbf7d0" }}>
-                  <div style={{ fontSize: 12, color: "#166534" }}>Đã chấp thuận</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#15803d", marginTop: 4 }}>{stats.approved_recordings}</div>
+                  <div style={{ fontSize: 12, color: "#166534" }}>Tổng bản ghi thu âm</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#15803d", marginTop: 4 }}>{stats.total_recordings}</div>
                 </div>
                 <div style={{ background: "#fefce8", padding: 14, borderRadius: 8, border: "1px solid #fef08a" }}>
-                  <div style={{ fontSize: 12, color: "#854d0e" }}>Thời lượng duyệt (phút)</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#a16207", marginTop: 4 }}>{stats.approved_duration_minutes}m</div>
+                  <div style={{ fontSize: 12, color: "#854d0e" }}>Tổng thời lượng (phút)</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#a16207", marginTop: 4 }}>{stats.total_duration_minutes}m</div>
                 </div>
               </div>
 
@@ -2172,8 +2089,7 @@ export default function Home() {
                       <span style={{ fontSize: 12, color: "#71717a", marginLeft: 8 }}>({c.prompts_count} câu)</span>
                     </div>
                     <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "#16a34a", fontWeight: 600 }}>{c.approved_count} đã duyệt</span> /{" "}
-                      <span style={{ color: "#71717a" }}>{c.recordings_count} đã nộp</span>
+                      <span style={{ color: "#16a34a", fontWeight: 600 }}>{c.recordings_count} bản ghi đã nộp</span>
                     </div>
                   </div>
                 ))}
@@ -2261,140 +2177,12 @@ export default function Home() {
             </>
           )}
 
-          {/* SUBTAB 3: REVIEWS STUDIO */}
-          {adminSubTab === "reviews" && (
-            <section style={styles.card}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Kiểm duyệt bản ghi âm</h2>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <select
-                    style={{ ...styles.field, margin: 0, padding: "7px 12px", width: "auto" }}
-                    value={reviewFilterStatus}
-                    onChange={(e) => {
-                      setReviewFilterStatus(e.target.value);
-                      setTimeout(() => loadReviews(), 50);
-                    }}
-                  >
-                    <option value="pending_review">Chờ duyệt (Pending)</option>
-                    <option value="approved">Đã chấp thuận (Approved)</option>
-                    <option value="rejected">Đã từ chối (Rejected)</option>
-                    <option value="all">Tất cả</option>
-                  </select>
-                  <button style={styles.btnSecondary} onClick={loadReviews}>
-                    <RefreshIcon size={13} />
-                    <span>Làm mới</span>
-                  </button>
-                </div>
-              </div>
-
-              {reviewList.length === 0 ? (
-                <p style={{ color: "#71717a", textAlign: "center", padding: "30px 0", fontSize: 14 }}>Không có bản ghi nào trong mục này.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  {reviewList.map((r) => (
-                    <div
-                      key={r.id}
-                      style={{
-                        padding: 16,
-                        background: "#f8fafc",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 8
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                        <div>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: "#09090b" }}>{r.course_title}</span>
-                          <span style={{ fontSize: 12, color: "#71717a", marginLeft: 8 }}>· Mã SV: {r.participant_code}</span>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            background: r.status === "approved" ? "#dcfce7" : r.status === "rejected" ? "#fee2e2" : "#fef3c7",
-                            color: r.status === "approved" ? "#166534" : r.status === "rejected" ? "#991b1b" : "#92400e"
-                          }}
-                        >
-                          {r.status === "approved" ? "Chấp thuận" : r.status === "rejected" ? "Từ chối" : "Chờ duyệt"}
-                        </span>
-                      </div>
-
-                      <p style={{ fontSize: 15, fontWeight: 600, color: "#09090b", margin: "6px 0 10px", lineHeight: 1.5 }}>
-                        {renderHighlightedText(r.text, r.target_terms)}
-                      </p>
-
-                      {/* Header-authenticated Blob Audio Stream Player */}
-                      <div style={{ background: "#ffffff", padding: 10, borderRadius: 6, border: "1px solid #e2e8f0", marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                        <AuthenticatedAudioPlayer
-                          apiBase={API}
-                          audioPath={`/api/v1/admin/recordings/${r.id}/audio`}
-                          authHeader={{ name: "x-admin-key", value: adminKey }}
-                          style={{ flex: 1, minWidth: 260 }}
-                        />
-                        <span style={{ fontSize: 12, color: "#71717a", fontFamily: "ui-monospace, monospace" }}>
-                          {r.duration_seconds > 0 ? `${r.duration_seconds.toFixed(1)}s` : ""} · {r.format.toUpperCase()}
-                        </span>
-                      </div>
-
-                      {/* Verbatim Transcript */}
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>
-                            Bản chép lời thực tế (Verbatim Transcript):
-                          </label>
-                          <button
-                            style={{ fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}
-                            onClick={() => setReviewTranscripts((prev) => ({ ...prev, [r.id]: r.text }))}
-                          >
-                            Điền câu mẫu
-                          </button>
-                        </div>
-                        <textarea
-                          style={{ ...styles.field, minHeight: 50, margin: 0, fontSize: 13 }}
-                          value={reviewTranscripts[r.id] ?? r.transcript ?? r.text}
-                          onChange={(e) => setReviewTranscripts((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                        />
-                      </div>
-
-                      {/* Review Buttons */}
-                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                        <button
-                          style={styles.btnDanger}
-                          onClick={() => submitReview(r.id, "rejected")}
-                        >
-                          <CrossIcon size={12} color="#dc2626" />
-                          <span>Từ chối</span>
-                        </button>
-                        <button
-                          style={styles.btnSecondary}
-                          onClick={() => submitReview(r.id, "rerecord")}
-                        >
-                          <RefreshIcon size={12} />
-                          <span>Yêu cầu thu lại</span>
-                        </button>
-                        <button
-                          style={styles.btnSuccess}
-                          onClick={() => submitReview(r.id, "approved")}
-                        >
-                          <CheckIcon size={13} />
-                          <span>Chấp thuận</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* SUBTAB 4: DATASET EXPORT */}
+          {/* SUBTAB 3: DATASET EXPORT */}
           {adminSubTab === "export" && (
             <section style={styles.card}>
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Xuất bộ dữ liệu nghiên cứu</h2>
               <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
-                Chỉ các bản ghi <strong>đã được chấp thuận (Approved)</strong> và có sự đồng ý của người tham gia mới được đưa vào bộ dữ liệu xuất bản.
+                Tất cả các bản ghi thu âm hợp lệ và có sự đồng ý của người tham gia sẽ được đưa vào bộ dữ liệu xuất bản.
                 Dữ liệu bao gồm định danh ẩn danh, thời lượng, checksum SHA-256, từ khóa kỹ thuật và bản chép lời chuẩn xác.
               </p>
 

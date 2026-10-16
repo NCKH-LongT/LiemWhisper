@@ -318,7 +318,7 @@ def init_db() -> None:
                 bytes INTEGER NOT NULL,
                 duration_seconds REAL DEFAULT 0.0,
                 format TEXT DEFAULT 'webm',
-                status TEXT NOT NULL DEFAULT 'pending_review',
+                status TEXT NOT NULL DEFAULT 'approved',
                 transcript TEXT,
                 reviewer_notes TEXT DEFAULT '',
                 reviewed_at INTEGER DEFAULT 0,
@@ -368,6 +368,8 @@ def init_db() -> None:
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS drive_sync_status TEXT DEFAULT 'pending';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS client_ip TEXT DEFAULT '';
+            ALTER TABLE recordings ALTER COLUMN status SET DEFAULT 'approved';
+            UPDATE recordings SET status = 'approved' WHERE status = 'pending_review';
             """)
         else:
 
@@ -412,7 +414,7 @@ def init_db() -> None:
                 bytes INTEGER NOT NULL,
                 duration_seconds REAL DEFAULT 0.0,
                 format TEXT DEFAULT 'webm',
-                status TEXT NOT NULL DEFAULT 'pending_review',
+                status TEXT NOT NULL DEFAULT 'approved',
                 transcript TEXT,
                 reviewer_notes TEXT DEFAULT '',
                 reviewed_at INTEGER DEFAULT 0,
@@ -487,6 +489,7 @@ def init_db() -> None:
                 c.execute("ALTER TABLE recordings ADD COLUMN drive_file_id TEXT")
             if "client_ip" not in rec_cols:
                 c.execute("ALTER TABLE recordings ADD COLUMN client_ip TEXT DEFAULT ''")
+            c.execute("UPDATE recordings SET status = 'approved' WHERE status = 'pending_review'")
 
 
 if __name__ == "__main__":
