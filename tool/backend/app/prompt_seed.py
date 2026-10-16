@@ -14,8 +14,8 @@ def sync_swt_prompts(connection_factory, json_path=None, force=False, style="scr
     now = int(time.time())
     with connection_factory() as c:
         course = c.execute(
-            "SELECT id FROM courses WHERE title=? OR title LIKE '%Software Testing%' ORDER BY created_at ASC, id ASC LIMIT 1",
-            (COURSE_TITLE,),
+            "SELECT id FROM courses WHERE title=? OR title LIKE ? ORDER BY created_at ASC, id ASC LIMIT 1",
+            (COURSE_TITLE, "%Software Testing%"),
         ).fetchone()
         if course:
             course_id = course[0]

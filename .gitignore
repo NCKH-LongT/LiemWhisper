@@ -42,3 +42,4 @@ wandb/
 *.pth
 *.ckpt
 *.safetensors
+*.tsbuildinfo

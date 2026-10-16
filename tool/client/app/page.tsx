@@ -387,7 +387,7 @@ export default function Home() {
     }
   }, [authRoleTab, googleOnboarding]);
 
-  function cleanupMedia() {
+  function cleanupMedia(releasePreview = true) {
     if (timerRef.current) clearInterval(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     streamRef.current?.getTracks().forEach((x) => x.stop());
@@ -396,7 +396,7 @@ export default function Home() {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-    if (urlRef.current) {
+    if (releasePreview && urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
       urlRef.current = "";
     }
@@ -742,7 +742,8 @@ export default function Home() {
         urlRef.current = url;
         setAudioUrl(url);
 
-        cleanupMedia();
+        // Stop microphone resources without invalidating the playback preview.
+        cleanupMedia(false);
         setIsRecording(false);
       };
 
@@ -1668,7 +1669,7 @@ export default function Home() {
 
               {/* PROMPT TEXT DISPLAY */}
               {(() => {
-                const text = currentTask.text || "";
+                const text = (currentTask.text || "").replace(/;/g, ",");
                 let questionPart = "";
                 let readingPart = text;
 
@@ -1774,16 +1775,44 @@ export default function Home() {
                 )}
               </div>
 
-              {/* RECORDING CONTROLS */}
+              {/* RECORDING & PLAYBACK CONTROLS */}
               <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {!isRecording && !audioUrl && (
+                {!isRecording && !audioUrl && currentTask.recording_id && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
+                      <CheckIcon size={14} color="#166534" />
+                      <span>Bản ghi âm đã lưu cho câu này</span>
+                      {currentTask.duration_seconds ? (
+                        <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
+                          ({currentTask.duration_seconds.toFixed(1)}s)
+                        </span>
+                      ) : null}
+                    </div>
+                    <AuthenticatedAudioPlayer
+                      apiBase={API}
+                      audioPath={`/api/v1/recordings/${currentTask.recording_id}/audio`}
+                      authHeader={{ name: "x-participant-token", value: token }}
+                      style={{ width: "100%", maxWidth: 400 }}
+                    />
+                    <button
+                      style={{ ...styles.btnSecondary, marginTop: 4 }}
+                      disabled={busy}
+                      onClick={() => startRecording(currentTask.id)}
+                    >
+                      <RefreshIcon size={13} />
+                      <span>Thu âm lại câu này</span>
+                    </button>
+                  </div>
+                )}
+
+                {!isRecording && !audioUrl && !currentTask.recording_id && (
                   <button
                     style={styles.btnRecord}
                     disabled={busy}
                     onClick={() => startRecording(currentTask.id)}
                   >
                     <MicIcon size={16} />
-                    <span>{currentTask.recording_id ? "Ghi âm lại" : "Bắt đầu ghi âm"}</span>
+                    <span>Bắt đầu ghi âm</span>
                   </button>
                 )}
 
@@ -1795,8 +1824,27 @@ export default function Home() {
                 )}
 
                 {audioUrl && !isRecording && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: "100%" }}>
-                    <audio controls src={audioUrl} style={{ width: "100%", maxWidth: 400 }} />
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: "100%", maxWidth: 420 }}>
+                    <div style={{ fontSize: 13, color: "#09090b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>Nghe lại bản thu thử ({recordedDuration.toFixed(1)}s):</span>
+                    </div>
+                    <audio
+                      key={audioUrl}
+                      controls
+                      src={audioUrl}
+                      preload="auto"
+                      onLoadedMetadata={(e) => {
+                        const el = e.currentTarget;
+                        if (el.duration === Infinity || isNaN(el.duration) || el.duration === 0) {
+                          el.currentTime = 1e101;
+                          el.ontimeupdate = () => {
+                            el.ontimeupdate = null;
+                            el.currentTime = 0;
+                          };
+                        }
+                      }}
+                      style={{ width: "100%", maxWidth: 400 }}
+                    />
                     <div style={{ display: "flex", gap: 10 }}>
                       <button style={styles.btnSecondary} onClick={clearRecordedAudio}>
                         <RefreshIcon size={13} />
