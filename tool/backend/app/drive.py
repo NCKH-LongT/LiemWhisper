@@ -747,13 +747,35 @@ class GoogleDriveClient:
     def move_and_rename_file(self, file_id: str, new_name: str, target_parent_id: str, old_parent_id: str | None = None) -> bool:
         token = self._get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
-        old_parent = old_parent_id or self.folder_id
         try:
+            params = {}
+            get_res = requests.request(
+                "GET",
+                f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,parents",
+                headers=headers,
+                timeout=15.0
+            )
+            if get_res.status_code == 200:
+                meta = get_res.json()
+                current_parents = meta.get("parents", [])
+                current_name = meta.get("name", "")
+                if target_parent_id not in current_parents:
+                    params["addParents"] = target_parent_id
+                removable = [p for p in current_parents if p != target_parent_id]
+                if removable:
+                    params["removeParents"] = ",".join(removable)
+                if current_name == new_name and not params:
+                    return True
+            else:
+                params["addParents"] = target_parent_id
+                if old_parent_id or self.folder_id:
+                    params["removeParents"] = old_parent_id or self.folder_id
+
             res = requests.request(
                 "PATCH",
                 f"https://www.googleapis.com/drive/v3/files/{file_id}",
                 headers={**headers, "Content-Type": "application/json"},
-                params={"addParents": target_parent_id, "removeParents": old_parent},
+                params=params,
                 json={"name": new_name},
                 timeout=15.0
             )

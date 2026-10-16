@@ -44,6 +44,34 @@ def enqueue_delete_job(db_conn: Any, recording_id: str, drive_file_id: str | Non
     return job_id
 
 
+def get_prompt_question_number(db_conn: Any, course_id: str | None, prompt_id: str | None) -> int:
+    """Returns the 1-based question number (1, 2, 3...) of prompt_id in course_id,
+    strictly matching the student studio tasks order: ORDER BY created_at ASC, id ASC.
+    """
+    if not course_id or not prompt_id:
+        return 1
+
+    # First check published prompts (active student tasks order)
+    rows = db_conn.execute(
+        "SELECT id FROM prompts WHERE course_id = ? AND published = 1 ORDER BY created_at ASC, id ASC",
+        (course_id,)
+    ).fetchall()
+    prompt_ids = [r[0] if isinstance(r, (tuple, list)) else r["id"] for r in rows]
+    if prompt_id in prompt_ids:
+        return prompt_ids.index(prompt_id) + 1
+
+    # Fallback to all course prompts if prompt was unpublished later
+    all_rows = db_conn.execute(
+        "SELECT id FROM prompts WHERE course_id = ? ORDER BY created_at ASC, id ASC",
+        (course_id,)
+    ).fetchall()
+    all_ids = [r[0] if isinstance(r, (tuple, list)) else r["id"] for r in all_rows]
+    if prompt_id in all_ids:
+        return all_ids.index(prompt_id) + 1
+
+    return 1
+
+
 def process_outbox(
     db_factory: Callable[[], Any],
     drive_client: Any = None,
@@ -109,14 +137,7 @@ def process_outbox(
                     continue
 
                 # Question order within the course
-                q_order = 1
-                if rec and rec["prompt_id"] and rec["course_id"]:
-                    order_row = c.execute("""
-                        SELECT COUNT(*) FROM prompts
-                        WHERE course_id = ? AND created_at <= (SELECT created_at FROM prompts WHERE id = ?)
-                    """, (rec["course_id"], rec["prompt_id"])).fetchone()
-                    if order_row and order_row[0] > 0:
-                        q_order = order_row[0]
+                q_order = get_prompt_question_number(c, rec["course_id"], rec["prompt_id"]) if rec else 1
 
                 code = (rec["participant_code"] or "").strip() if rec else ""
                 if not code and rec and rec["participant_id"]:
@@ -315,6 +336,8 @@ def sync_drive_manifest_csv(db_factory: Callable[[], Any], drive_client: Any) ->
     with db_factory() as c:
         rows = c.execute("""
             SELECT r.id as recording_id,
+                   r.prompt_id,
+                   pr.course_id,
                    COALESCE(p.participant_code, '') as participant_code,
                    COALESCE(p.name, '') as participant_name,
                    COALESCE(p.email, '') as participant_email,
@@ -330,49 +353,52 @@ def sync_drive_manifest_csv(db_factory: Callable[[], Any], drive_client: Any) ->
             ORDER BY p.participant_code ASC, r.created_at ASC
         """).fetchall()
 
-    if not rows:
-        return
+        if not rows:
+            return
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "STT",
-        "Mã Thí Sinh",
-        "Họ và Tên",
-        "Email",
-        "Thư Mục Drive",
-        "Tên File Drive",
-        "Câu Hỏi",
-        "Thời Lượng (giây)",
-        "Định Dạng",
-        "Thời Gian Thu Âm",
-        "Link Nghe Trực Tiếp Trên Drive"
-    ])
-
-    for idx, r in enumerate(rows, 1):
-        code = (r["participant_code"] or "").strip() or "Chua_cap_ma"
-        name = (r["participant_name"] or "").strip()
-        email = (r["participant_email"] or "").strip()
-        folder_display = f"{code} - {name}" if name else f"{code} - {email}" if email else code
-        short_id = (r["recording_id"] or "")[:8]
-        file_name_display = f"{code}_{short_id}.{r['format']}"
-        dt_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r['created_at'])) if r['created_at'] else ''
-        file_id = r['drive_file_id'] or ''
-        drive_link = f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
-
+        buf = io.StringIO()
+        writer = csv.writer(buf)
         writer.writerow([
-            idx,
-            code,
-            name or 'Không tên',
-            email,
-            folder_display,
-            file_name_display,
-            (r['prompt_text'] or '').replace('\n', ' ')[:100],
-            r['duration_seconds'],
-            r['format'],
-            dt_str,
-            drive_link
+            "STT",
+            "Mã Thí Sinh",
+            "Họ và Tên",
+            "Email",
+            "Thư Mục Drive",
+            "Tên File Drive",
+            "Câu Hỏi",
+            "Thời Lượng (giây)",
+            "Định Dạng",
+            "Thời Gian Thu Âm",
+            "Link Nghe Trực Tiếp Trên Drive"
         ])
+
+        for idx, r in enumerate(rows, 1):
+            code = (r["participant_code"] or "").strip() or "Chua_cap_ma"
+            name = (r["participant_name"] or "").strip()
+            email = (r["participant_email"] or "").strip()
+            folder_display = f"{code} - {name}" if name else f"{code} - {email}" if email else code
+            short_id = (r["recording_id"] or "")[:8]
+            q_order = get_prompt_question_number(c, r["course_id"], r["prompt_id"])
+            cau_label = f"Cau{q_order:02d}"
+            file_name_display = f"{code}_{cau_label}_{short_id}.{r['format']}"
+            dt_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r['created_at'])) if r['created_at'] else ''
+            file_id = r['drive_file_id'] or ''
+            drive_link = f"https://drive.google.com/file/d/{file_id}/view" if file_id else ''
+
+            prompt_clean = (r['prompt_text'] or '').replace('\n', ' ')[:100]
+            writer.writerow([
+                idx,
+                code,
+                name or 'Không tên',
+                email,
+                folder_display,
+                file_name_display,
+                f"Câu {q_order}: {prompt_clean}",
+                r['duration_seconds'],
+                r['format'],
+                dt_str,
+                drive_link
+            ])
 
     csv_bytes = ("\ufeff" + buf.getvalue()).encode("utf-8")
     try:
@@ -429,15 +455,8 @@ def organize_existing_drive_files(db_factory: Callable[[], Any], drive_client: A
         subfolder_id = subfolder_cache[folder_name]
 
         # Calculate question order
-        q_order = 1
         with db_factory() as c:
-            if r["prompt_id"] and r["course_id"]:
-                order_row = c.execute("""
-                    SELECT COUNT(*) FROM prompts
-                    WHERE course_id = ? AND created_at <= (SELECT created_at FROM prompts WHERE id = ?)
-                """, (r["course_id"], r["prompt_id"])).fetchone()
-                if order_row and order_row[0] > 0:
-                    q_order = order_row[0]
+            q_order = get_prompt_question_number(c, r["course_id"], r["prompt_id"])
 
         cau_label = f"Cau{q_order:02d}"
         new_filename = f"{code}_{cau_label}_{rec_id[:8]}.{r['format']}"

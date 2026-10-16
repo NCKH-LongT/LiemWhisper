@@ -33,14 +33,14 @@ class FakeDriveClient:
         self.id_counter += 1
         return f"fake-drive-id-{self.id_counter}"
 
-    def put(self, file_id: str, name: str, body: bytes, mime: str) -> None:
+    def put(self, file_id: str, name: str, body: bytes, mime: str, parent_id: str | None = None) -> None:
         if not self.connected:
             raise Exception("Drive unconnected")
         if self.fail_put_once:
             self.fail_put_once = False
             raise RuntimeError("Transient Drive upload error")
         self.put_calls += 1
-        self.files[file_id] = {"name": name, "body": body, "mime": mime}
+        self.files[file_id] = {"name": name, "body": body, "mime": mime, "parent": parent_id}
 
     def download(self, file_id: str) -> bytes:
         if not self.connected:
@@ -57,6 +57,20 @@ class FakeDriveClient:
             raise Exception("Drive unconnected")
         self.delete_calls += 1
         self.files.pop(file_id, None)
+
+    def get_or_create_subfolder(self, folder_name: str) -> str:
+        return f"folder-{folder_name}"
+
+    def move_and_rename_file(self, file_id: str, new_name: str, target_parent_id: str, old_parent_id: str | None = None) -> bool:
+        if file_id in self.files:
+            self.files[file_id]["name"] = new_name
+            self.files[file_id]["parent"] = target_parent_id
+        return True
+
+    def upload_or_update_file(self, filename: str, body: bytes, mime: str) -> str:
+        fid = f"file-{filename}"
+        self.files[fid] = {"name": filename, "body": body, "mime": mime}
+        return fid
 
 
 ADMIN = {"x-admin-key": "test-only-admin-secret"}
@@ -286,3 +300,66 @@ def test_reject_storage_backend_drive_legacy(tmp_path, monkeypatch):
     )
     assert res.status_code == 503
     assert "sql_drive" in res.json()["detail"]
+
+
+def test_question_numbering_identical_created_at(tmp_path, monkeypatch):
+    """Verifies that prompts with identical created_at timestamps are numbered sequentially 1, 2, 3... and NOT given the last prompt number for all files."""
+    main, client, _, _, _, token = setup_drive_app(tmp_path, monkeypatch)
+    fake_drive = FakeDriveClient()
+
+    # Create dedicated course with 3 prompts
+    course = client.post("/api/v1/admin/courses", headers=ADMIN, json={"title": "Fresh Numbering Course"}).json()["id"]
+    p_res = client.post(
+        f"/api/v1/admin/courses/{course}/prompts/bulk",
+        headers=ADMIN,
+        json={"prompts": ["Prompt A", "Prompt B", "Prompt C"], "publish_immediately": True}
+    ).json()
+    p_ids = [p["id"] for p in p_res["prompts"]]
+
+    # Force identical timestamps
+    with main.db() as c:
+        c.execute("UPDATE prompts SET created_at = 1700000000 WHERE course_id = ?", (course,))
+
+    # Retrieve tasks for participant - tasks order is deterministic: ORDER BY created_at ASC, id ASC
+    tasks = client.get("/api/v1/tasks", params={"course_id": course}, headers=token).json()
+    course_tasks = [t for t in tasks if t["id"] in p_ids]
+    assert len(course_tasks) == 3
+
+    # Upload recordings for all 3 prompts
+    rec_ids = []
+    for i, t in enumerate(course_tasks):
+        res = client.post(
+            "/api/v1/recordings",
+            headers=token,
+            data={"prompt_id": t["id"], "duration": 2.0 + i},
+            files={"audio": (f"sample_{i}.webm", AUDIO_SAMPLE + bytes([i]), "audio/webm")}
+        )
+        assert res.status_code == 200
+        rec_ids.append(res.json()["recording_id"])
+
+    # Process uploads to fake Drive
+    from app.worker import process_outbox, organize_existing_drive_files, sync_drive_manifest_csv
+    processed = process_outbox(main.db, drive_client=fake_drive, limit=10)
+    assert processed == 3
+
+    # Check file names in fake drive
+    filenames = [meta["name"] for meta in fake_drive.files.values() if "Cau" in meta.get("name", "")]
+    assert any("Cau01" in f for f in filenames), f"Expected Cau01 in {filenames}"
+    assert any("Cau02" in f for f in filenames), f"Expected Cau02 in {filenames}"
+    assert any("Cau03" in f for f in filenames), f"Expected Cau03 in {filenames}"
+
+    # Crucial assertion: NONE of them should all be the same count
+    counts = [part for f in filenames for part in f.split("_") if part.startswith("Cau")]
+    assert set(counts) == {"Cau01", "Cau02", "Cau03"}, f"Expected Cau01, Cau02, Cau03, got: {counts}"
+
+    # Also test organize_existing_drive_files and sync_drive_manifest_csv
+    organized = organize_existing_drive_files(main.db, fake_drive)
+    assert organized >= 3
+    sync_drive_manifest_csv(main.db, fake_drive)
+    csv_file = fake_drive.files.get("file-Danh_sach_ban_thu.csv")
+    assert csv_file is not None
+    csv_text = csv_file["body"].decode("utf-8")
+    assert "Cau01" in csv_text
+    assert "Cau02" in csv_text
+    assert "Cau03" in csv_text
+
