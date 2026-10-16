@@ -2,6 +2,10 @@ export interface DriveStatusResponse {
   connected: boolean;
   folder_id: string | null;
   configured: boolean;
+  total_recordings?: number;
+  synced_count?: number;
+  pending_count?: number;
+  failed_count?: number;
 }
 
 export type DriveConnectionState = "connected" | "configured" | "unconfigured" | "unknown";
@@ -71,3 +75,16 @@ export function buildDriveStatusRequest(adminToken: string): { url: string; init
     }
   };
 }
+
+export function buildDriveSyncNowRequest(adminToken: string): { url: string; init: RequestInit } {
+  return {
+    url: "/api/v1/admin/drive/sync",
+    init: {
+      method: "POST",
+      headers: {
+        "x-admin-key": adminToken
+      }
+    }
+  };
+}
+

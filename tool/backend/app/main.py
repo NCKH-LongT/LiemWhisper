@@ -20,7 +20,7 @@ try:
     import requests
 except ImportError:
     requests = None
-from fastapi import FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -34,7 +34,7 @@ from app.auth import (
     revoke_admin,
     setup_auth,
 )
-from app.drive import register_drive_routes
+from app.drive import is_drive_connected, register_drive_routes
 from app.storage import (
     get_audio_bytes,
     store_audio_bytes,
@@ -71,7 +71,40 @@ def auto_seed_default_prompts(force: bool = False) -> dict:
 
 auto_seed_default_prompts()
 
-app = FastAPI(title="LiemWhisper Collection API", version="1.0.0")
+import asyncio
+from contextlib import asynccontextmanager
+
+async def periodic_outbox_sync():
+    """Background periodic loop to sync pending recordings to Google Drive."""
+    await asyncio.sleep(5)
+    while True:
+        try:
+            if is_drive_connected(db):
+                from app.worker import backfill_unsynced_drive_jobs, process_all_outbox
+                await asyncio.to_thread(backfill_unsynced_drive_jobs, db)
+                await asyncio.to_thread(process_all_outbox, db, 20)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+        await asyncio.sleep(20)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    worker_task = None
+    if os.getenv("TESTING") != "true":
+        worker_task = asyncio.create_task(periodic_outbox_sync())
+    try:
+        yield
+    finally:
+        if worker_task:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
+
+app = FastAPI(title="LiemWhisper Collection API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS if "*" not in ALLOWED_ORIGINS else ["*"],
@@ -79,6 +112,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 def admin(x_admin_key: str | None = None, key: str | None = None):
@@ -693,7 +727,11 @@ def participant_me(x_participant_token: str | None = Header(None), token: str | 
     }
 
 @app.post("/api/v1/participants/complete")
-def participant_complete(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
+def participant_complete(
+    background_tasks: BackgroundTasks = None,
+    x_participant_token: str | None = Header(None),
+    token: str | None = Query(None)
+):
     """Mark participant recording session as completed and trigger thank-you email."""
     pid = participant(x_participant_token, token)
     now = int(time.time())
@@ -717,6 +755,18 @@ def participant_complete(x_participant_token: str | None = Header(None), token: 
             participant_code=code,
             total_recordings=recs_count
         )
+
+    if background_tasks is not None:
+        def _bg_drive_sync():
+            try:
+                if is_drive_connected(db):
+                    from app.worker import backfill_unsynced_drive_jobs, process_all_outbox
+                    backfill_unsynced_drive_jobs(db)
+                    process_all_outbox(db, max_total=50)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Completion drive sync error: %s", e)
+        background_tasks.add_task(_bg_drive_sync)
 
     return {
         "status": "success",
@@ -781,6 +831,7 @@ async def upload_recording(
     audio: UploadFile = File(...),
     duration: float = Form(0.0),
     request: Request = None,
+    background_tasks: BackgroundTasks = None,
     x_participant_token: str | None = Header(None),
     token: str | None = Query(None)
 ):
@@ -802,12 +853,19 @@ async def upload_recording(
     rec_id = str(uuid.uuid4())
     now = int(time.time())
     file_sha256 = hashlib.sha256(body).hexdigest()
-    initial_sync_status = "pending" if STORAGE == "sql_drive" else "disabled"
+    drive_ready = is_drive_connected(db)
+    initial_sync_status = "pending" if (STORAGE == "sql_drive" or drive_ready) else "disabled"
     client_ip = get_client_ip(request)
 
     with db() as c:
         try:
             storage_key = store_audio_bytes(rec_id, body, ext, norm_mime, STORAGE, c, AUDIO_DIR)
+            if initial_sync_status == "pending":
+                from app.worker import enqueue_upload_job
+                has_job = c.execute("SELECT 1 FROM drive_sync_jobs WHERE recording_id=? AND action='upload'", (rec_id,)).fetchone()
+                if not has_job:
+                    enqueue_upload_job(c, rec_id)
+
             c.execute("""
                 INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
                                        duration_seconds, format, status, created_at, drive_sync_status, client_ip)
@@ -819,6 +877,15 @@ async def upload_recording(
                 raise HTTPException(409, "Bạn đã nộp bản ghi cho câu này rồi") from exc
             raise
 
+    if initial_sync_status == "pending" and background_tasks is not None:
+        def _bg_upload():
+            try:
+                from app.worker import process_all_outbox
+                process_all_outbox(db, max_total=5)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Background drive upload error: %s", e)
+        background_tasks.add_task(_bg_upload)
 
     return {
         "recording_id": rec_id,

@@ -88,7 +88,7 @@ def process_outbox(
 
                 # Check if recording still exists (withdrawal race)
                 rec = c.execute(
-                    "SELECT id, sha256, format, mime FROM recordings WHERE id=?",
+                    "SELECT id, sha256, format, mime, storage_key FROM recordings WHERE id=?",
                     (rec_id,)
                 ).fetchone()
                 if not rec:
@@ -118,19 +118,27 @@ def process_outbox(
                         )
                         continue
 
-                # Fetch audio bytes from database
+                # Fetch audio bytes from database or local file
                 audio_row = c.execute(
                     "SELECT body FROM recording_audio WHERE recording_id=?",
                     (rec_id,)
                 ).fetchone()
-                if not audio_row or audio_row[0] is None:
+                audio_bytes = None
+                if audio_row and audio_row[0] is not None:
+                    audio_bytes = bytes(audio_row[0])
+                elif rec and "storage_key" in rec and rec["storage_key"] and not str(rec["storage_key"]).startswith("sql://"):
+                    from pathlib import Path
+                    p = Path(rec["storage_key"])
+                    if p.is_file():
+                        audio_bytes = p.read_bytes()
+
+                if audio_bytes is None:
                     err_msg = f"Audio body missing in database for recording {rec_id}"
                     c.execute(
                         "UPDATE drive_sync_jobs SET status='failed', attempts=?, last_error=?, updated_at=? WHERE id=?",
                         (attempts, err_msg, now, job_id)
                     )
                     continue
-                audio_bytes = bytes(audio_row[0])
 
             # Perform Drive upload
             try:
@@ -184,3 +192,54 @@ def process_outbox(
                     )
 
     return processed_count
+
+
+def backfill_unsynced_drive_jobs(db_factory: Callable[[], Any]) -> int:
+    """Finds all recordings not yet marked synced on Google Drive and enqueues upload jobs."""
+    now = int(time.time())
+    enqueued = 0
+    with db_factory() as c:
+        rows = c.execute("""
+            SELECT r.id
+            FROM recordings r
+            WHERE (r.drive_sync_status IS NULL OR r.drive_sync_status != 'synced')
+              AND NOT EXISTS (
+                  SELECT 1 FROM drive_sync_jobs j
+                  WHERE j.recording_id = r.id
+                    AND j.action = 'upload'
+                    AND j.status IN ('pending', 'uploading', 'retrying', 'synced')
+              )
+        """).fetchall()
+
+        for row in rows:
+            rec_id = row[0] if isinstance(row, (tuple, list)) else row["id"]
+            job_id = str(uuid.uuid4())
+            c.execute(
+                """INSERT INTO drive_sync_jobs(id, recording_id, action, status, drive_file_id, attempts, created_at, updated_at)
+                   VALUES (?, ?, 'upload', 'pending', NULL, 0, ?, ?)""",
+                (job_id, rec_id, now, now)
+            )
+            c.execute(
+                "UPDATE recordings SET drive_sync_status = 'pending' WHERE id = ? AND (drive_sync_status IS NULL OR drive_sync_status = 'disabled')",
+                (rec_id,)
+            )
+            enqueued += 1
+
+    return enqueued
+
+
+def process_all_outbox(
+    db_factory: Callable[[], Any],
+    drive_client: Any = None,
+    max_total: int = 50
+) -> int:
+    """Runs process_outbox in loops until queue is drained or max_total is reached."""
+    total = 0
+    while total < max_total:
+        limit = min(10, max_total - total)
+        count = process_outbox(db_factory, drive_client=drive_client, limit=limit)
+        if count == 0:
+            break
+        total += count
+    return total
+

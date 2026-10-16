@@ -52,6 +52,18 @@ def _init_tables(db: Callable[[], Any]) -> None:
         """)
 
 
+def is_drive_connected(db_conn_or_factory: Any) -> bool:
+    try:
+        if callable(db_conn_or_factory):
+            with db_conn_or_factory() as c:
+                row = c.execute("SELECT folder_id, refresh_token_enc FROM drive_connection WHERE id='default'").fetchone()
+        else:
+            row = db_conn_or_factory.execute("SELECT folder_id, refresh_token_enc FROM drive_connection WHERE id='default'").fetchone()
+        return bool(row and row["folder_id"] and row["refresh_token_enc"])
+    except Exception:
+        return False
+
+
 def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[str | None], None]) -> None:
     _init_tables(db)
 
@@ -67,19 +79,79 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
         enc_key = os.getenv("TOKEN_ENCRYPTION_KEY")
         configured = bool(client_id and client_secret and redirect_uri and enc_key)
 
+        total_recordings = 0
+        synced_count = 0
+        pending_count = 0
+        failed_count = 0
+
+        include_counts = request.query_params.get("counts") == "1" or request.query_params.get("include_counts") == "1"
+
         with db() as c:
             row = c.execute("SELECT folder_id FROM drive_connection WHERE id='default'").fetchone()
+            if include_counts:
+                try:
+                    counts = c.execute("""
+                        SELECT
+                            COUNT(*) AS total,
+                            COUNT(CASE WHEN drive_sync_status = 'synced' THEN 1 END) AS synced,
+                            COUNT(CASE WHEN drive_sync_status = 'pending' THEN 1 END) AS pending,
+                            COUNT(CASE WHEN drive_sync_status = 'failed' THEN 1 END) AS failed
+                        FROM recordings
+                    """).fetchone()
+                    if counts:
+                        total_recordings = counts["total"]
+                        synced_count = counts["synced"]
+                        pending_count = counts["pending"]
+                        failed_count = counts["failed"]
+                except Exception:
+                    pass
 
-        if row:
-            return {
-                "connected": True,
-                "configured": configured,
-                "folder_id": row["folder_id"] if row["folder_id"] else None,
-            }
-        return {
-            "connected": False,
+        res = {
+            "connected": bool(row),
             "configured": configured,
-            "folder_id": None,
+            "folder_id": row["folder_id"] if row and row["folder_id"] else None,
+        }
+        if include_counts:
+            res.update({
+                "total_recordings": total_recordings,
+                "synced_count": synced_count,
+                "pending_count": pending_count,
+                "failed_count": failed_count,
+            })
+        return res
+
+    @app.post("/api/v1/admin/drive/sync")
+    def trigger_drive_sync(
+        request: Request,
+        x_admin_key: str | None = Header(None, alias="x-admin-key"),
+    ):
+        if request.query_params.get("key") or request.query_params.get("x_admin_key"):
+            raise HTTPException(403, "Admin credential must be in header")
+        admin(x_admin_key)
+
+        from app.worker import backfill_unsynced_drive_jobs, process_all_outbox
+        enqueued = backfill_unsynced_drive_jobs(db)
+        processed = process_all_outbox(db, max_total=50)
+
+        with db() as c:
+            counts = c.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(CASE WHEN drive_sync_status = 'synced' THEN 1 END) AS synced,
+                    COUNT(CASE WHEN drive_sync_status = 'pending' THEN 1 END) AS pending,
+                    COUNT(CASE WHEN drive_sync_status = 'failed' THEN 1 END) AS failed
+                FROM recordings
+            """).fetchone()
+
+        return {
+            "status": "ok",
+            "enqueued": enqueued,
+            "processed": processed,
+            "total_recordings": counts["total"] if counts else 0,
+            "synced_count": counts["synced"] if counts else 0,
+            "pending_count": counts["pending"] if counts else 0,
+            "failed_count": counts["failed"] if counts else 0,
+            "message": f"Đã đồng bộ {processed} bản ghi lên Google Drive thành công"
         }
 
     @app.post("/api/v1/admin/drive/connect")
@@ -370,6 +442,18 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
                 "updated_at=excluded.updated_at",
                 (account_id, account_email, refresh_token_enc, folder_id, now, now),
             )
+
+        # Trigger immediate background sync for any existing recordings
+        if os.getenv("TESTING") != "true":
+            def _bg_sync():
+                try:
+                    from app.worker import backfill_unsynced_drive_jobs, process_all_outbox
+                    backfill_unsynced_drive_jobs(db)
+                    process_all_outbox(db)
+                except Exception as e:
+                    logging.getLogger(__name__).warning("Initial drive sync failed: %s", e)
+            import threading
+            threading.Thread(target=_bg_sync, daemon=True).start()
 
         web_public_url = (os.getenv("WEB_PUBLIC_URL") or "").strip().rstrip("/")
         target_url = web_public_url if web_public_url.startswith(("http://", "https://")) else ""

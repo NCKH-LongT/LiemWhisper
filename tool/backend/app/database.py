@@ -342,6 +342,15 @@ def init_db() -> None:
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS drive_connection(
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                account_email TEXT,
+                refresh_token_enc TEXT NOT NULL,
+                folder_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS target_terms TEXT DEFAULT '[]';
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS difficulty TEXT DEFAULT 'normal';
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
@@ -424,6 +433,15 @@ def init_db() -> None:
                 drive_file_id TEXT,
                 attempts INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS drive_connection(
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                account_email TEXT,
+                refresh_token_enc TEXT NOT NULL,
+                folder_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );

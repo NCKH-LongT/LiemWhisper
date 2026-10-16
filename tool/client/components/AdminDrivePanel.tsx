@@ -5,7 +5,8 @@ import {
   DriveStatusResponse,
   formatDriveStatusText,
   buildDriveConnectRequest,
-  buildDriveStatusRequest
+  buildDriveStatusRequest,
+  buildDriveSyncNowRequest
 } from "../lib/drive";
 import { openDrivePopup, DrivePopupFlow } from "../lib/drive-popup";
 import { sanitizeApiError } from "../lib/security";
@@ -54,9 +55,32 @@ export function AdminDrivePanel({
 }: AdminDrivePanelProps) {
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const statusText = formatDriveStatusText(driveStatus);
+
+  async function handleSyncNow() {
+    if (!adminToken) return;
+    setSyncing(true);
+    setError(null);
+    setSyncNotice(null);
+    try {
+      const { url, init } = buildDriveSyncNowRequest(adminToken);
+      const res = await fetch(`${apiBase}${url}`, init);
+      if (!res.ok) {
+        throw new Error(`Đồng bộ thất bại (${res.status})`);
+      }
+      const data = await res.json();
+      setSyncNotice(data.message || `Đã đồng bộ ${data.processed ?? 0} bản ghi lên Google Drive.`);
+      refreshStatus();
+    } catch (err) {
+      setError(sanitizeApiError(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -210,12 +234,57 @@ export function AdminDrivePanel({
               </code>
             </div>
           )}
+          {driveStatus?.connected && (
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "inline-flex", gap: 6, fontSize: 12, background: "#f8fafc", padding: "4px 10px", borderRadius: 6, border: "1px solid #e2e8f0", alignItems: "center" }}>
+                <span>Đã lưu Drive:</span>
+                <strong style={{ color: "#16a34a" }}>{driveStatus.synced_count ?? 0}</strong>
+                <span style={{ color: "#94a3b8" }}>/</span>
+                <span>Tổng:</span>
+                <strong>{driveStatus.total_recordings ?? 0} bản ghi</strong>
+                {(driveStatus.pending_count ?? 0) > 0 && (
+                  <span style={{ color: "#d97706", fontWeight: 600, marginLeft: 4 }}>
+                    ({driveStatus.pending_count} đang chờ đẩy)
+                  </span>
+                )}
+                {(driveStatus.failed_count ?? 0) > 0 && (
+                  <span style={{ color: "#dc2626", fontWeight: 600, marginLeft: 4 }}>
+                    ({driveStatus.failed_count} lỗi)
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {driveStatus?.connected && (
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing || loading}
+              style={{
+                padding: "8px 14px",
+                background: "#16a34a",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)"
+              }}
+            >
+              <RefreshIcon size={13} />
+              <span>{syncing ? "Đang đẩy lên Drive..." : "Đồng bộ Drive ngay"}</span>
+            </button>
+          )}
+
           <button
             onClick={refreshStatus}
-            disabled={loading || connecting}
+            disabled={loading || connecting || syncing}
             style={{
               padding: "8px 14px",
               background: "#ffffff",
@@ -236,7 +305,7 @@ export function AdminDrivePanel({
 
           <button
             onClick={handleConnect}
-            disabled={connecting || loading || Boolean(driveStatus && !driveStatus.configured)}
+            disabled={connecting || loading || syncing || Boolean(driveStatus && !driveStatus.configured)}
             title={driveStatus && !driveStatus.configured ? "Chưa cấu hình Client ID / Secret trên máy chủ" : ""}
             style={{
               padding: "8px 14px",
@@ -264,6 +333,23 @@ export function AdminDrivePanel({
           </button>
         </div>
       </div>
+
+      {syncNotice && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "8px 12px",
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            color: "#166534",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 500
+          }}
+        >
+          ✓ {syncNotice}
+        </div>
+      )}
 
       {error && (
         <div
