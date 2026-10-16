@@ -127,6 +127,13 @@ test("Google onboarding sends optional student details and preserves survey fiel
   });
 });
 
+test("participant portal retains the official Google button without the broken quick-login control", () => {
+  const ui = onboardingHarness();
+  assert.ok(ui.find(node => node.props?.id === "google-signin-btn-container"));
+  assert.equal(ui.find(node => node.type === "span" && node.props.children === "Đăng nhập nhanh với Google"), undefined);
+  assert.doesNotMatch(page, /google\.accounts\.id\.prompt\(/);
+});
+
 test("participant portal offers only Google authentication while retaining admin login", () => {
   assert.doesNotMatch(page, /studentAuthMode|studentIdentifierInput|handleStudentLogin|handleStudentSignup/);
   assert.doesNotMatch(page, /\/api\/v1\/auth\/student-login|Đăng ký không dùng Google|hoặc dùng mã truy cập bí mật/);
