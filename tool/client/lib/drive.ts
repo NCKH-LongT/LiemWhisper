@@ -88,3 +88,15 @@ export function buildDriveSyncNowRequest(adminToken: string): { url: string; ini
   };
 }
 
+export function buildDriveCleanupDuplicatesRequest(adminToken: string): { url: string; init: RequestInit } {
+  return {
+    url: "/api/v1/admin/drive/cleanup-duplicates",
+    init: {
+      method: "POST",
+      headers: {
+        "x-admin-key": adminToken
+      }
+    }
+  };
+}
+

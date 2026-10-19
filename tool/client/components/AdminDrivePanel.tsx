@@ -6,7 +6,8 @@ import {
   formatDriveStatusText,
   buildDriveConnectRequest,
   buildDriveStatusRequest,
-  buildDriveSyncNowRequest
+  buildDriveSyncNowRequest,
+  buildDriveCleanupDuplicatesRequest
 } from "../lib/drive";
 import { openDrivePopup, DrivePopupFlow } from "../lib/drive-popup";
 import { sanitizeApiError } from "../lib/security";
@@ -79,12 +80,9 @@ export function AdminDrivePanel({
     setCleanNotice(null);
     setSyncNotice(null);
     try {
-      const res = await fetch(`${apiBase}/api/v1/admin/drive/cleanup-duplicates`, {
-        method: "POST",
-        headers: {
-          "x-admin-key": adminToken
-        }
-      });
+      const cleanBase = apiBase ? apiBase.replace(/\/+$/, "") : "";
+      const { url, init } = buildDriveCleanupDuplicatesRequest(adminToken);
+      const res = await fetch(`${cleanBase}${url}`, init);
       if (!res.ok) {
         let msg = `Dọn dẹp thất bại (${res.status})`;
         try {

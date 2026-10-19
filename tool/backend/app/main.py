@@ -54,7 +54,16 @@ MAX_BYTES = int(os.getenv("MAX_AUDIO_BYTES", "15000000"))  # 15MB limit
 ADMIN_KEY = os.getenv("ADMIN_API_KEY", "liemwhisper-admin-secret-2026")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 ORIGINS_ENV = os.getenv("WEB_PUBLIC_URL", "*")
-ALLOWED_ORIGINS = [o.strip() for o in ORIGINS_ENV.split(",") if o.strip()] or ["*"]
+configured_origins = [o.strip() for o in ORIGINS_ENV.split(",") if o.strip()]
+COMMON_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "https://liemwhisper.vercel.app",
+    "https://liem-whisper.vercel.app",
+]
+ALLOWED_ORIGINS = list(dict.fromkeys(configured_origins + COMMON_ORIGINS)) if "*" not in configured_origins else ["*"]
 
 AUDIO_DIR = ROOT / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -113,6 +122,7 @@ app = FastAPI(title="LiemWhisper Collection API", version="1.0.0", lifespan=life
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS if "*" not in ALLOWED_ORIGINS else ["*"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://[a-zA-Z0-9_.-]+\.vercel\.app$",
     allow_credentials=True if "*" not in ALLOWED_ORIGINS else False,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -3,7 +3,8 @@ import assert from "node:assert";
 import {
   formatDriveStatusText,
   buildDriveConnectRequest,
-  buildDriveStatusRequest
+  buildDriveStatusRequest,
+  buildDriveCleanupDuplicatesRequest
 } from "../lib/drive.ts";
 
 test("formatDriveStatusText handles all drive connection states with neutral typography", () => {
@@ -49,6 +50,15 @@ test("buildDriveStatusRequest uses header and avoids query credentials", () => {
   const req = buildDriveStatusRequest("session_token_xyz");
   assert.strictEqual(req.url, "/api/v1/admin/drive/status");
   assert.strictEqual(req.init.method, "GET");
+  const headers = req.init.headers as Record<string, string>;
+  assert.strictEqual(headers["x-admin-key"], "session_token_xyz");
+  assert.ok(!req.url.includes("key="));
+});
+
+test("buildDriveCleanupDuplicatesRequest uses header and correct POST endpoint", () => {
+  const req = buildDriveCleanupDuplicatesRequest("session_token_xyz");
+  assert.strictEqual(req.url, "/api/v1/admin/drive/cleanup-duplicates");
+  assert.strictEqual(req.init.method, "POST");
   const headers = req.init.headers as Record<string, string>;
   assert.strictEqual(headers["x-admin-key"], "session_token_xyz");
   assert.ok(!req.url.includes("key="));
