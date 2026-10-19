@@ -28,8 +28,13 @@ from pydantic import BaseModel, Field
 from app.database import db, get_data_root, init_db
 
 from app.auth import (
+    add_admin_email,
     admin_login,
+    create_admin_session,
+    is_admin_email,
+    list_admin_emails,
     participant_login,
+    remove_admin_email,
     require_admin,
     revoke_admin,
     setup_auth,
@@ -494,6 +499,67 @@ def delete_prompt(prompt_id: str, x_admin_key: str | None = Header(None), key: s
         raise HTTPException(404, "Prompt not found")
     return {"deleted": True, "id": prompt_id}
 
+
+# ----------------- Admin Gmail & Role Management -----------------
+
+class AdminEmailInput(BaseModel):
+    email: str = Field(min_length=3, max_length=150)
+
+
+@app.get("/api/v1/admin/admins")
+def admin_get_admins(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
+    """Retrieve all authorized admin email addresses."""
+    admin(x_admin_key, key)
+    return {
+        "status": "success",
+        "admins": list_admin_emails(db)
+    }
+
+
+@app.post("/api/v1/admin/admins")
+def admin_add_admin(data: AdminEmailInput, x_admin_key: str | None = Header(None), key: str | None = Query(None)):
+    """Grant admin role to a Google email address."""
+    admin(x_admin_key, key)
+    clean_email = data.email.strip().lower()
+    res = add_admin_email(db, clean_email, created_by="admin")
+    return {
+        "status": "success",
+        "admin": res,
+        "message": f"Đã cấp quyền Quản trị viên thành công cho {clean_email}."
+    }
+
+
+@app.delete("/api/v1/admin/admins/{email}")
+def admin_delete_admin(email: str, x_admin_key: str | None = Header(None), key: str | None = Query(None)):
+    """Revoke admin role from an email address."""
+    admin(x_admin_key, key)
+    clean_email = email.strip().lower()
+    success = remove_admin_email(db, clean_email)
+    if not success:
+        raise HTTPException(404, f"Không tìm thấy email {clean_email} trong danh sách quản trị viên.")
+    return {
+        "status": "success",
+        "message": f"Đã thu hồi quyền Quản trị viên của {clean_email}."
+    }
+
+
+@app.get("/api/v1/admin/participants")
+def admin_get_participants(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
+    """Retrieve recent participants with their email and admin status."""
+    admin(x_admin_key, key)
+    with db() as c:
+        rows = c.execute("""
+            SELECT id, participant_code, email, name, onboarded, consent_at, is_admin
+            FROM participants
+            ORDER BY consent_at DESC
+            LIMIT 50
+        """).fetchall()
+        return {
+            "status": "success",
+            "participants": [dict(r) for r in rows]
+        }
+
+
 # ----------------- Student / Public Endpoints -----------------
 
 @app.get("/api/v1/courses")
@@ -577,9 +643,12 @@ def auth_google(data: GoogleAuthInput, request: Request):
     name = payload.get("name", "")
     picture = payload.get("picture", "")
 
+    user_is_admin = is_admin_email(db, email)
+    admin_session_token = create_admin_session(db) if user_is_admin else None
+
     with db() as c:
         row = c.execute(
-            """SELECT id, participant_code, token_hash, consent_version, consent_at, survey, email, google_id, name, onboarded
+            """SELECT id, participant_code, token_hash, consent_version, consent_at, survey, email, google_id, name, onboarded, is_admin
                FROM participants
                WHERE google_id=? OR (email=? AND email != '')""",
             (google_id, email)
@@ -592,9 +661,10 @@ def auth_google(data: GoogleAuthInput, request: Request):
         if row:
             token = secrets.token_urlsafe(32)
             token_hash = hashlib.sha256(token.encode()).hexdigest()
+            is_admin_flag = 1 if user_is_admin else (row["is_admin"] if "is_admin" in row.keys() else 0)
             c.execute(
-                "UPDATE participants SET token_hash=?, google_id=?, name=?, email=? WHERE id=?",
-                (token_hash, google_id, name, email, row["id"])
+                "UPDATE participants SET token_hash=?, google_id=?, name=?, email=?, is_admin=? WHERE id=?",
+                (token_hash, google_id, name, email, is_admin_flag, row["id"])
             )
 
             is_onboarded = bool(row["onboarded"] and row["onboarded"] == 1)
@@ -608,7 +678,10 @@ def auth_google(data: GoogleAuthInput, request: Request):
                     "email": email,
                     "name": name,
                     "picture": picture,
-                    "message": "Đăng nhập Google thành công"
+                    "is_admin": user_is_admin,
+                    "admin_token": admin_session_token,
+                    "role": "admin" if user_is_admin else "student",
+                    "message": "Đăng nhập Google thành công" + (" với quyền Quản trị viên" if user_is_admin else "")
                 }
             else:
                 return {
@@ -618,7 +691,10 @@ def auth_google(data: GoogleAuthInput, request: Request):
                     "email": email,
                     "name": name,
                     "picture": picture,
-                    "suggested_code": row["participant_code"] or extract_student_code(email)
+                    "suggested_code": row["participant_code"] or extract_student_code(email),
+                    "is_admin": user_is_admin,
+                    "admin_token": admin_session_token,
+                    "role": "admin" if user_is_admin else "student"
                 }
         else:
             pid = str(uuid.uuid4())
@@ -632,9 +708,9 @@ def auth_google(data: GoogleAuthInput, request: Request):
                 "user_agent": user_agent,
             }
             c.execute(
-                """INSERT INTO participants(id, token_hash, participant_code, consent_version, consent_at, survey, email, google_id, name, onboarded)
-                   VALUES (?,?,?,?,?,?,?,?,?,0)""",
-                (pid, token_hash, suggested_code, "v1.0", now, json.dumps(draft_survey), email, google_id, name)
+                """INSERT INTO participants(id, token_hash, participant_code, consent_version, consent_at, survey, email, google_id, name, onboarded, is_admin)
+                   VALUES (?,?,?,?,?,?,?,?,?,0,?)""",
+                (pid, token_hash, suggested_code, "v1.0", now, json.dumps(draft_survey), email, google_id, name, 1 if user_is_admin else 0)
             )
             return {
                 "status": "success",
@@ -643,7 +719,10 @@ def auth_google(data: GoogleAuthInput, request: Request):
                 "email": email,
                 "name": name,
                 "picture": picture,
-                "suggested_code": suggested_code
+                "suggested_code": suggested_code,
+                "is_admin": user_is_admin,
+                "admin_token": admin_session_token,
+                "role": "admin" if user_is_admin else "student"
             }
 
 
@@ -687,12 +766,15 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
             "user_agent": user_agent,
         }
 
+        user_is_admin = is_admin_email(db, row["email"])
+        admin_session_token = create_admin_session(db) if user_is_admin else None
+
         now = int(time.time())
         c.execute(
             """UPDATE participants
-               SET participant_code=?, consent_version=?, consent_at=?, survey=?, onboarded=1
+               SET participant_code=?, consent_version=?, consent_at=?, survey=?, onboarded=1, is_admin=?
                WHERE id=?""",
-            (code, data.consent_version, now, json.dumps(survey_data), row["id"])
+            (code, data.consent_version, now, json.dumps(survey_data), 1 if user_is_admin else 0, row["id"])
         )
 
     return {
@@ -702,6 +784,9 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
         "participant_id": row["id"],
         "email": row["email"],
         "name": row["name"],
+        "is_admin": user_is_admin,
+        "admin_token": admin_session_token,
+        "role": "admin" if user_is_admin else "student",
         "message": "Đăng ký thành công. Chào mừng bạn đến với LiemWhisper!"
     }
 
@@ -710,19 +795,22 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
 def participant_me(x_participant_token: str | None = Header(None), token: str | None = Query(None)):
     pid = participant(x_participant_token, token)
     with db() as c:
-        row = c.execute("SELECT id, participant_code, consent_version, consent_at, survey, email, name, completed_at FROM participants WHERE id=?", (pid,)).fetchone()
+        row = c.execute("SELECT id, participant_code, consent_version, consent_at, survey, email, name, completed_at, is_admin FROM participants WHERE id=?", (pid,)).fetchone()
         recs = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()
     if not row:
         raise HTTPException(404, "Participant not found")
     survey = json.loads(row["survey"]) if row["survey"] else {}
+    email = row.get("email", "") or ""
+    user_is_admin = is_admin_email(db, email) or bool(row.get("is_admin"))
     return {
         "participant_id": row["id"],
         "participant_code": row["participant_code"],
-        "email": row.get("email", "") or "",
+        "email": email,
         "name": row.get("name", "") or "",
         "consent_version": row["consent_version"],
         "total_recordings": recs["count"] if recs else 0,
         "completed_at": row.get("completed_at", 0) or 0,
+        "is_admin": user_is_admin,
         "survey": survey
     }
 

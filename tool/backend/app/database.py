@@ -351,6 +351,11 @@ def init_db() -> None:
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS admin_emails(
+                email TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                created_by TEXT DEFAULT 'system'
+            );
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS target_terms TEXT DEFAULT '[]';
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS difficulty TEXT DEFAULT 'normal';
             ALTER TABLE prompts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT '';
@@ -361,6 +366,7 @@ def init_db() -> None:
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS onboarded INTEGER DEFAULT 0;
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS completed_at INTEGER DEFAULT 0;
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS is_admin INTEGER DEFAULT 0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS duration_seconds REAL DEFAULT 0.0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS format TEXT DEFAULT 'webm';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS reviewer_notes TEXT DEFAULT '';
@@ -447,6 +453,11 @@ def init_db() -> None:
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS admin_emails(
+                email TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                created_by TEXT DEFAULT 'system'
+            );
             """)
 
             # Safe migrations for SQLite
@@ -473,6 +484,8 @@ def init_db() -> None:
                 c.execute("ALTER TABLE participants ADD COLUMN onboarded INTEGER DEFAULT 0")
             if "completed_at" not in part_cols:
                 c.execute("ALTER TABLE participants ADD COLUMN completed_at INTEGER DEFAULT 0")
+            if "is_admin" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN is_admin INTEGER DEFAULT 0")
 
             rec_cols = [r[1] for r in c.execute("PRAGMA table_info(recordings)").fetchall()]
             if "duration_seconds" not in rec_cols:
@@ -490,6 +503,21 @@ def init_db() -> None:
             if "client_ip" not in rec_cols:
                 c.execute("ALTER TABLE recordings ADD COLUMN client_ip TEXT DEFAULT ''")
             c.execute("UPDATE recordings SET status = 'approved' WHERE status = 'pending_review'")
+
+        # Seed initial admins from ADMIN_EMAILS env variable if configured
+        import time
+        admin_emails_env = os.getenv("ADMIN_EMAILS", "")
+        if admin_emails_env:
+            now = int(time.time())
+            for em in admin_emails_env.split(","):
+                clean = em.strip().lower()
+                if clean and "@" in clean:
+                    existing = c.execute("SELECT 1 FROM admin_emails WHERE LOWER(email) = ?", (clean,)).fetchone()
+                    if not existing:
+                        c.execute(
+                            "INSERT INTO admin_emails (email, created_at, created_by) VALUES (?, ?, ?)",
+                            (clean, now, "env")
+                        )
 
 
 if __name__ == "__main__":

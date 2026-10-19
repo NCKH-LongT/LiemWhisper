@@ -60,23 +60,29 @@ def compute_levenshtein(seq1: list[Any], seq2: list[Any]) -> int:
 
 
 def compute_wer(reference: str, hypothesis: str) -> float:
-    """Word Error Rate = Levenshtein(ref_words, hyp_words) / len(ref_words)."""
+    """Word Error Rate = Levenshtein(ref_words, hyp_words) / len(ref_words).
+    
+    Note: WER can be > 1.0 (100%) due to insertions. Do NOT cap with min(1.0, ...).
+    """
     r_words = normalize_text(reference).split()
     h_words = normalize_text(hypothesis).split()
     if not r_words:
-        return 0.0 if not h_words else 1.0
+        return 0.0 if not h_words else float(len(h_words))
     dist = compute_levenshtein(r_words, h_words)
-    return min(1.0, dist / len(r_words))
+    return dist / len(r_words)
 
 
 def compute_cer(reference: str, hypothesis: str) -> float:
-    """Character Error Rate = Levenshtein(ref_chars, hyp_chars) / len(ref_chars)."""
+    """Character Error Rate = Levenshtein(ref_chars, hyp_chars) / len(ref_chars).
+    
+    Note: CER can be > 1.0 (100%) due to insertions. Do NOT cap with min(1.0, ...).
+    """
     r_chars = list(normalize_text(reference).replace(" ", ""))
     h_chars = list(normalize_text(hypothesis).replace(" ", ""))
     if not r_chars:
-        return 0.0 if not h_chars else 1.0
+        return 0.0 if not h_chars else float(len(h_chars))
     dist = compute_levenshtein(r_chars, h_chars)
-    return min(1.0, dist / len(r_chars))
+    return dist / len(r_chars)
 
 
 def evaluate_term_recall(target_terms: list[str], hypothesis: str) -> tuple[int, int, float]:
@@ -95,7 +101,32 @@ def evaluate_term_recall(target_terms: list[str], hypothesis: str) -> tuple[int,
     return (found, len(target_terms), found / len(target_terms))
 
 
-def run_benchmark(manifest_path: str, audio_dir: str, models: list[str], output_csv: str | None = None):
+def get_transcriber(model_name: str, device: str = "cpu"):
+    """Load a real ASR model pipeline or transcriber.
+    
+    Supports Hugging Face transformers pipeline or local model paths.
+    """
+    try:
+        from transformers import pipeline
+        import torch
+
+        dev_id = 0 if device == "cuda" and torch.cuda.is_available() else -1
+        print(f"Loading Hugging Face pipeline for: {model_name} (device={device})...")
+        pipe = pipeline("automatic-speech-recognition", model=model_name, device=dev_id)
+        return pipe
+    except Exception as e:
+        print(f"Warning: Could not load transformers pipeline for '{model_name}': {e}")
+        return None
+
+
+def run_benchmark(
+    manifest_path: str,
+    audio_dir: str,
+    models: list[str],
+    output_csv: str | None = None,
+    require_verbatim: bool = True,
+    device: str = "cpu",
+):
     """Run comparative benchmark across models on manifest."""
     manifest_p = Path(manifest_path)
     if not manifest_p.is_file():
@@ -110,12 +141,19 @@ def run_benchmark(manifest_path: str, audio_dir: str, models: list[str], output_
         return
 
     print(f"Loaded {len(samples)} recording samples from {manifest_path}")
-    print(f"Models to evaluate: {', '.join(models)}\n")
+    print(f"Models to evaluate: {', '.join(models)}")
+    print(f"Require verbatim transcript: {require_verbatim}\n")
 
     summary_results = []
+    audio_root = Path(audio_dir)
 
     for model_name in models:
         print(f"=== Evaluating model: {model_name} ===")
+        pipe = get_transcriber(model_name, device=device)
+        if pipe is None:
+            print(f"Skipping {model_name} because model transcriber could not be loaded.\n")
+            continue
+
         total_wer = 0.0
         total_cer = 0.0
         total_terms_found = 0
@@ -125,17 +163,37 @@ def run_benchmark(manifest_path: str, audio_dir: str, models: list[str], output_
         start_time = time.time()
 
         for idx, sample in enumerate(samples):
-            ref_text = sample.get("verbatim_transcript") or sample.get("prompt_text", "")
-            target_terms = sample.get("target_terms", [])
-            audio_file = sample.get("audio_file", "")
-            duration = sample.get("duration_seconds", 0.0)
-            total_audio_duration += duration
+            verbatim = sample.get("verbatim_transcript", "").strip()
+            prompt = sample.get("prompt_text", "").strip()
 
-            # Placeholder for model transcription inference:
-            # When transformers is installed, this invokes: pipeline("automatic-speech-recognition", model=model_name)
-            # For demonstration / baseline setup, simulate transcription or call local endpoint
-            hyp_text = ref_text  # Baseline simulated perfect match or perturbed
-            
+            if require_verbatim and not verbatim:
+                # Do not evaluate unverified audio when calculating official WER
+                continue
+
+            ref_text = verbatim if verbatim else prompt
+            target_terms = sample.get("target_terms", [])
+            audio_rel = sample.get("audio_file", "")
+            duration = sample.get("duration_seconds", 0.0)
+
+            # Resolve audio path
+            audio_path = audio_root / audio_rel if audio_rel else None
+            if not audio_path or not audio_path.is_file():
+                # Try direct path
+                if audio_rel and Path(audio_rel).is_file():
+                    audio_path = Path(audio_rel)
+                else:
+                    print(f"Warning: Audio file not found for sample {sample.get('id', idx)}: {audio_rel}. Skipping.")
+                    continue
+
+            # Run real transcription
+            try:
+                out = pipe(str(audio_path), generate_kwargs={"language": "vi", "task": "transcribe"})
+                hyp_text = out.get("text", "") if isinstance(out, dict) else str(out)
+            except Exception as e:
+                print(f"Inference error on {audio_path}: {e}")
+                continue
+
+            total_audio_duration += duration
             wer = compute_wer(ref_text, hyp_text)
             cer = compute_cer(ref_text, hyp_text)
             found, total, recall = evaluate_term_recall(target_terms, hyp_text)
@@ -161,7 +219,7 @@ def run_benchmark(manifest_path: str, audio_dir: str, models: list[str], output_
             "rtf": round(rtf, 3),
         }
         summary_results.append(res)
-        print(f"Result for {model_name}: WER = {res['wer_pct']}%, CER = {res['cer_pct']}%, Term Recall = {res['term_recall_pct']}%\n")
+        print(f"Result for {model_name}: Evaluated {evaluated_count} samples | WER = {res['wer_pct']}%, CER = {res['cer_pct']}%, Term Recall = {res['term_recall_pct']}%\n")
 
     # Print Table
     print("\n" + "=" * 75)
@@ -190,6 +248,19 @@ if __name__ == "__main__":
         help="List of model names to compare",
     )
     parser.add_argument("--output_csv", type=str, default="whisper_comparison_results.csv", help="Output CSV path")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on ('cpu' or 'cuda')")
+    parser.add_argument(
+        "--allow_prompt_fallback",
+        action="store_true",
+        help="If set, uses prompt_text when verbatim_transcript is absent (Warning: not gold-standard)",
+    )
     args = parser.parse_args()
 
-    run_benchmark(args.manifest, args.audio_dir, args.models, args.output_csv)
+    run_benchmark(
+        manifest_path=args.manifest,
+        audio_dir=args.audio_dir,
+        models=args.models,
+        output_csv=args.output_csv,
+        require_verbatim=not args.allow_prompt_fallback,
+        device=args.device,
+    )

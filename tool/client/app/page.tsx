@@ -164,10 +164,30 @@ function UserIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-function ShieldIcon({ size = 14 }: { size?: number }) {
+function ShieldIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
+}
+
+function UsersIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function TrashIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
 }
@@ -263,7 +283,13 @@ export default function Home() {
 
   // Admin state (Memory only, never persisted to localStorage)
   const [adminKey, setAdminKey] = useState("");
-  const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "export">("stats");
+  const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "admins" | "export">("stats");
+  const [isGoogleAdmin, setIsGoogleAdmin] = useState(false);
+  const [adminUsersList, setAdminUsersList] = useState<Array<{ email: string; created_at: number; created_by: string; linked: boolean; name: string; is_env: boolean }>>([]);
+  const [adminParticipantsList, setAdminParticipantsList] = useState<Array<{ id: string; participant_code: string; email: string; name: string; is_admin?: number }>>([]);
+  const [newAdminEmailInput, setNewAdminEmailInput] = useState("");
+  const [addingAdmin, setAddingAdmin] = useState(false);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [driveStatus, setDriveStatus] = useState<DriveStatusResponse | null>(null);
   const [adminCourses, setAdminCourses] = useState<any[]>([]);
@@ -304,6 +330,8 @@ export default function Home() {
         setRole("guest");
       });
       loadAdminCourses(savedAdminSession);
+      loadAdminAdmins(savedAdminSession);
+      loadAdminParticipants(savedAdminSession);
       loadDriveStatus(savedAdminSession);
     } else if (savedRole === "student" && savedToken) {
       setToken(savedToken);
@@ -488,6 +516,13 @@ export default function Home() {
         body: JSON.stringify({ credential })
       });
 
+      if (res.is_admin && res.admin_token) {
+        saveAdminSession(res.admin_token);
+        setAdminKey(res.admin_token);
+        setIsGoogleAdmin(true);
+        cleanLegacyAdminStorage();
+      }
+
       if (res.needs_onboarding) {
         setGoogleUser({
           temp_token: res.temp_token,
@@ -502,19 +537,33 @@ export default function Home() {
         setReferringLecturer("");
         setConsent(false);
         setGoogleOnboarding(true);
+        if (res.is_admin) {
+          setNotice(`Tài khoản Google (${res.email}) có quyền Quản trị viên. Bạn có thể vào ngay Bảng Quản trị hoặc hoàn thành khảo sát.`);
+        }
       } else {
         setToken(res.participant_token);
         localStorage.setItem("liemwhisper_token", res.participant_token);
-        localStorage.setItem("liemwhisper_role", "student");
-        setRole("student");
-        setNotice(`Đăng nhập Google thành công. Xin chào ${res.name || res.participant_code}!`);
+        if (res.is_admin) {
+          localStorage.setItem("liemwhisper_role", "admin");
+          setRole("admin");
+          setNotice(`Đăng nhập Google thành công với quyền Quản trị viên! Xin chào ${res.name || res.email}!`);
+          await loadAdminStats(res.admin_token);
+          await loadAdminCourses(res.admin_token);
+          await loadAdminAdmins(res.admin_token);
+          await loadAdminParticipants(res.admin_token);
+          await loadDriveStatus(res.admin_token);
+        } else {
+          localStorage.setItem("liemwhisper_role", "student");
+          setRole("student");
+          setNotice(`Đăng nhập Google thành công. Xin chào ${res.name || res.participant_code}!`);
 
-        await loadParticipantMe(res.participant_token);
-        const cList = await loadCourses();
-        const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
-        if (cid) {
-          setSelectedCourse(cid);
-          loadTasks(cid, res.participant_token);
+          await loadParticipantMe(res.participant_token);
+          const cList = await loadCourses();
+          const cid = selectedCourse || (cList.length > 0 ? cList[0].id : "");
+          if (cid) {
+            setSelectedCourse(cid);
+            loadTasks(cid, res.participant_token);
+          }
         }
       }
     } catch (e) {
@@ -561,6 +610,11 @@ export default function Home() {
 
       setToken(res.participant_token);
       localStorage.setItem("liemwhisper_token", res.participant_token);
+      if (res.is_admin && res.admin_token) {
+        saveAdminSession(res.admin_token);
+        setAdminKey(res.admin_token);
+        setIsGoogleAdmin(true);
+      }
       localStorage.setItem("liemwhisper_role", "student");
       setRole("student");
       setGoogleOnboarding(false);
@@ -606,6 +660,8 @@ export default function Home() {
       setNotice("Đăng nhập quyền quản trị viên thành công.");
       await loadAdminStats(sessionToken);
       await loadAdminCourses(sessionToken);
+      await loadAdminAdmins(sessionToken);
+      await loadAdminParticipants(sessionToken);
       await loadDriveStatus(sessionToken);
     } catch (e) {
       alertError(e);
@@ -670,6 +726,11 @@ export default function Home() {
     setRole("guest");
     setToken("");
     setAdminKey("");
+    setIsGoogleAdmin(false);
+    setAdminUsersList([]);
+    setAdminParticipantsList([]);
+    setGoogleUser(null);
+    setGoogleOnboarding(false);
     setParticipantInfo(null);
     setDriveStatus(null);
     setTasks([]);
@@ -909,6 +970,94 @@ export default function Home() {
       }
     } catch (e) {
       alertError(e);
+    }
+  }
+
+  async function loadAdminAdmins(keyOverride?: string) {
+    const k = keyOverride || adminKey || getAdminSession();
+    if (!k) return;
+    setLoadingAdmins(true);
+    try {
+      const data = await request("/api/v1/admin/admins", {
+        headers: { "x-admin-key": k }
+      });
+      setAdminUsersList(data.admins || []);
+    } catch {
+      // Non-blocking
+    } finally {
+      setLoadingAdmins(false);
+    }
+  }
+
+  async function loadAdminParticipants(keyOverride?: string) {
+    const k = keyOverride || adminKey || getAdminSession();
+    if (!k) return;
+    try {
+      const data = await request("/api/v1/admin/participants", {
+        headers: { "x-admin-key": k }
+      });
+      setAdminParticipantsList(data.participants || []);
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  async function handleAddAdmin(emailToAdd?: string) {
+    const target = (emailToAdd || newAdminEmailInput).trim().toLowerCase();
+    if (!target) {
+      setError("Vui lòng nhập địa chỉ Gmail để cấp quyền Quản trị viên.");
+      return;
+    }
+    const k = adminKey || getAdminSession();
+    if (!k) {
+      setError("Phiên Quản trị viên không hợp lệ. Vui lòng đăng nhập lại.");
+      return;
+    }
+    setAddingAdmin(true);
+    setError("");
+    try {
+      const res = await request("/api/v1/admin/admins", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": k
+        },
+        body: JSON.stringify({ email: target })
+      });
+      setNotice(res.message || `Đã cấp quyền Quản trị viên thành công cho ${target}.`);
+      setNewAdminEmailInput("");
+      await loadAdminAdmins(k);
+      await loadAdminParticipants(k);
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setAddingAdmin(false);
+    }
+  }
+
+  async function handleRemoveAdmin(email: string) {
+    if (!confirm(`Bạn có chắc chắn muốn thu hồi quyền Quản trị viên của email "${email}"?`)) {
+      return;
+    }
+    const k = adminKey || getAdminSession();
+    if (!k) {
+      setError("Phiên Quản trị viên không hợp lệ. Vui lòng đăng nhập lại.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await request(`/api/v1/admin/admins/${encodeURIComponent(email)}`, {
+        method: "DELETE",
+        headers: { "x-admin-key": k }
+      });
+      setNotice(res.message || `Đã thu hồi quyền Quản trị viên của ${email}.`);
+      await loadAdminAdmins(k);
+      await loadAdminParticipants(k);
+    } catch (e) {
+      alertError(e);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1168,7 +1317,66 @@ export default function Home() {
 
         {/* User Session Status & Logout when logged in */}
         {role !== "guest" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {(adminKey || isGoogleAdmin || getAdminSession()) && (
+              <div style={{ display: "flex", gap: 6 }}>
+                {role === "admin" && token && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRole("student");
+                      const cid = selectedCourse || (courses.length > 0 ? courses[0].id : "");
+                      if (cid && token) loadTasks(cid, token);
+                    }}
+                    style={{
+                      ...styles.btnSecondary,
+                      padding: "6px 12px",
+                      fontSize: 13,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "#f0fdf4",
+                      color: "#166534",
+                      borderColor: "#bbf7d0"
+                    }}
+                  >
+                    <MicIcon size={13} color="#166534" />
+                    <span>Chế độ Thu âm</span>
+                  </button>
+                )}
+                {role === "student" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRole("admin");
+                      const k = adminKey || getAdminSession();
+                      if (k) {
+                        loadAdminStats(k);
+                        loadAdminCourses(k);
+                        loadAdminAdmins(k);
+                        loadAdminParticipants(k);
+                        loadDriveStatus(k);
+                      }
+                    }}
+                    style={{
+                      ...styles.btnSecondary,
+                      padding: "6px 12px",
+                      fontSize: 13,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      borderColor: "#bfdbfe"
+                    }}
+                  >
+                    <ShieldIcon size={13} color="#1d4ed8" />
+                    <span>Trang Quản trị</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             <div
               style={{
                 display: "inline-flex",
@@ -1184,7 +1392,7 @@ export default function Home() {
               }}
             >
               {role === "admin" ? <ShieldIcon size={14} /> : <UserIcon size={14} />}
-              <span>{role === "admin" ? "Quản trị viên" : `Sinh viên: ${participantInfo?.participant_code || "Người tham gia"}`}</span>
+              <span>{role === "admin" ? (isGoogleAdmin && googleUser?.name ? `Admin: ${googleUser.name}` : "Quản trị viên") : `Sinh viên: ${participantInfo?.participant_code || "Người tham gia"}`}</span>
             </div>
 
             <button onClick={handleLogout} style={styles.btnSecondary}>
@@ -1294,6 +1502,57 @@ export default function Home() {
                       Đã xác thực Google
                     </span>
                   </div>
+
+                  {isGoogleAdmin && (
+                    <div style={{
+                      background: "#eff6ff",
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      marginBottom: 16,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <ShieldIcon size={18} color="#2563eb" />
+                        <div>
+                          <div style={{ fontWeight: 600, color: "#1e40af", fontSize: 13 }}>
+                            Tài khoản có quyền Quản trị viên (Admin)
+                          </div>
+                          <div style={{ color: "#3b82f6", fontSize: 12 }}>
+                            Bạn có thể truy cập Bảng Quản trị ngay mà không cần hoàn tất khảo sát.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGoogleOnboarding(false);
+                          setRole("admin");
+                          const k = adminKey || getAdminSession();
+                          if (k) {
+                            loadAdminStats(k);
+                            loadAdminCourses(k);
+                            loadAdminAdmins(k);
+                            loadAdminParticipants(k);
+                            loadDriveStatus(k);
+                          }
+                        }}
+                        style={{
+                          ...styles.btnPrimary,
+                          padding: "6px 14px",
+                          fontSize: 12,
+                          background: "#2563eb",
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        Vào Bảng Quản trị 👉
+                      </button>
+                    </div>
+                  )}
 
                   <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
                     Đề tài nghiên cứu LiemWhisper thu thập ngữ liệu phát âm tiếng Việt có chêm xen thuật ngữ CNTT. Dữ liệu được mã hóa ẩn danh phục vụ mục đích học thuật.
@@ -2029,6 +2288,22 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
+                    background: adminSubTab === "admins" ? "#ffffff" : "transparent",
+                    color: adminSubTab === "admins" ? "#09090b" : "#71717a",
+                    boxShadow: adminSubTab === "admins" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
+                  }}
+                  onClick={() => { setAdminSubTab("admins"); loadAdminAdmins(); loadAdminParticipants(); }}
+                >
+                  Cấp quyền Admin (Gmail)
+                </button>
+                <button
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: 13,
                     background: adminSubTab === "export" ? "#ffffff" : "transparent",
                     color: adminSubTab === "export" ? "#09090b" : "#71717a",
                     boxShadow: adminSubTab === "export" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
@@ -2044,6 +2319,8 @@ export default function Home() {
                 onClick={() => {
                   loadAdminStats();
                   loadAdminCourses();
+                  loadAdminAdmins();
+                  loadAdminParticipants();
                   loadDriveStatus();
                 }}
               >
@@ -2069,6 +2346,10 @@ export default function Home() {
                 <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 12, color: "#64748b" }}>Người tham gia</div>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_participants}</div>
+                </div>
+                <div style={{ background: "#f5f3ff", padding: 14, borderRadius: 8, border: "1px solid #ddd6fe" }}>
+                  <div style={{ fontSize: 12, color: "#6b21a8" }}>Quản trị viên (Gmail)</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", marginTop: 4 }}>{adminUsersList.length || 1}</div>
                 </div>
                 <div style={{ background: "#f0fdf4", padding: 14, borderRadius: 8, border: "1px solid #bbf7d0" }}>
                   <div style={{ fontSize: 12, color: "#166534" }}>Tổng bản ghi thu âm</div>
@@ -2175,6 +2456,254 @@ export default function Home() {
                 </div>
               </section>
             </>
+          )}
+
+          {/* SUBTAB: ADMIN USERS MANAGEMENT (GMAIL) */}
+          {adminSubTab === "admins" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Card 1: Add new admin by Gmail */}
+              <section style={styles.card}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <ShieldIcon size={18} color="#2563eb" />
+                  <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Cấp quyền Quản trị viên mới qua Google / Gmail</h2>
+                </div>
+                <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
+                  Người dùng sở hữu địa chỉ Gmail dưới đây sẽ được cấp quyền Quản trị viên (Admin). Khi đăng nhập bằng tài khoản Google tại trang chủ, hệ thống sẽ tự động nhận diện và chuyển sang bảng quản trị.
+                </p>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    type="email"
+                    style={{
+                      ...styles.field,
+                      maxWidth: 420,
+                      flex: 1,
+                      padding: "10px 14px",
+                      fontSize: 14
+                    }}
+                    placeholder="Nhập địa chỉ Gmail (ví dụ: giangvien@gmail.com)"
+                    value={newAdminEmailInput}
+                    onChange={(e) => setNewAdminEmailInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddAdmin(); }}
+                    disabled={addingAdmin}
+                  />
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.btnPrimary,
+                      padding: "10px 20px",
+                      fontSize: 14,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      opacity: addingAdmin ? 0.7 : 1
+                    }}
+                    onClick={() => handleAddAdmin()}
+                    disabled={addingAdmin}
+                  >
+                    {addingAdmin ? <RefreshIcon size={14} /> : <CheckIcon size={14} />}
+                    <span>{addingAdmin ? "Đang cấp..." : "Cấp quyền Admin"}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Card 2: List of active Admins */}
+              <section style={styles.card}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Danh sách Quản trị viên hiện tại</h2>
+                    <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+                      Tổng cộng {adminUsersList.length} tài khoản có quyền quản trị hệ thống
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const k = adminKey || getAdminSession();
+                      if (k) { loadAdminAdmins(k); loadAdminParticipants(k); }
+                    }}
+                    disabled={loadingAdmins}
+                    style={{
+                      ...styles.btnSecondary,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6
+                    }}
+                  >
+                    <RefreshIcon size={12} />
+                    <span>Làm mới</span>
+                  </button>
+                </div>
+
+                {loadingAdmins && adminUsersList.length === 0 ? (
+                  <div style={{ padding: "24px 0", textAlign: "center", color: "#71717a", fontSize: 13 }}>
+                    Đang tải danh sách quản trị viên...
+                  </div>
+                ) : adminUsersList.length === 0 ? (
+                  <div style={{ padding: "24px 0", textAlign: "center", color: "#71717a", fontSize: 13, background: "#f8fafc", borderRadius: 8 }}>
+                    Chưa có quản trị viên nào được cấp qua Gmail. Hãy nhập Gmail ở trên để cấp quyền quản trị đầu tiên.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#475569" }}>
+                          <th style={{ padding: "10px 14px", fontWeight: 600 }}>Tài khoản Gmail</th>
+                          <th style={{ padding: "10px 14px", fontWeight: 600 }}>Tên hiển thị / Liên kết</th>
+                          <th style={{ padding: "10px 14px", fontWeight: 600 }}>Nguồn cấp</th>
+                          <th style={{ padding: "10px 14px", fontWeight: 600 }}>Ngày cấp</th>
+                          <th style={{ padding: "10px 14px", fontWeight: 600, textAlign: "right" }}>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminUsersList.map((a) => (
+                          <tr key={a.email} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "12px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  background: "#eff6ff",
+                                  color: "#2563eb",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontWeight: 700,
+                                  fontSize: 12
+                                }}>
+                                  G
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 600, color: "#09090b" }}>{a.email}</div>
+                                  <div style={{ display: "inline-block", background: "#dbeafe", color: "#1e40af", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                                    Admin
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: "12px 14px", color: a.linked ? "#09090b" : "#94a3b8" }}>
+                              {a.linked ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#15803d", fontWeight: 500 }}>
+                                  <CheckIcon size={13} color="#15803d" />
+                                  <span>{a.name || "Đã liên kết Google"}</span>
+                                </span>
+                              ) : (
+                                <span>Chờ đăng nhập lần đầu</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "12px 14px", color: "#64748b" }}>
+                              {a.is_env ? (
+                                <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                                  Biến môi trường
+                                </span>
+                              ) : (
+                                <span>{a.created_by || "Admin"}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "12px 14px", color: "#64748b" }}>
+                              {a.created_at ? new Date(a.created_at * 1000).toLocaleString("vi-VN") : "Cấu hình cố định"}
+                            </td>
+                            <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                              {a.is_env ? (
+                                <span style={{ fontSize: 11, color: "#94a3b8" }} title="Quản trị viên cấu hình trong ADMIN_EMAILS không thể xóa qua giao diện">
+                                  Cố định
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAdmin(a.email)}
+                                  disabled={busy}
+                                  style={{
+                                    ...styles.btnSecondary,
+                                    padding: "4px 10px",
+                                    fontSize: 12,
+                                    color: "#dc2626",
+                                    borderColor: "#fca5a5",
+                                    background: "#fff"
+                                  }}
+                                  title="Thu hồi quyền quản trị viên của email này"
+                                >
+                                  Thu hồi
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              {/* Card 3: Quick grant from existing Google participants */}
+              {adminParticipantsList.length > 0 && (
+                <section style={styles.card}>
+                  <div style={{ marginBottom: 12 }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Gợi ý cấp Admin từ người tham gia Google gần đây</h2>
+                    <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+                      Nhấn "Cấp quyền" để nâng cấp tài khoản của người tham gia lên Quản trị viên
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+                    {adminParticipantsList
+                      .filter((p) => p.email && p.email.includes("@"))
+                      .slice(0, 8)
+                      .map((p) => {
+                        const alreadyAdmin = adminUsersList.some((a) => a.email.toLowerCase() === p.email.toLowerCase()) || Boolean(p.is_admin);
+                        return (
+                          <div
+                            key={p.id}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 6,
+                              border: "1px solid #e2e8f0",
+                              background: alreadyAdmin ? "#f8fafc" : "#ffffff",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 8
+                            }}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: "#09090b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.name || p.participant_code}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.email}
+                              </div>
+                            </div>
+                            {alreadyAdmin ? (
+                              <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                                Đã là Admin
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleAddAdmin(p.email)}
+                                disabled={addingAdmin}
+                                style={{
+                                  ...styles.btnSecondary,
+                                  padding: "4px 8px",
+                                  fontSize: 12,
+                                  color: "#2563eb",
+                                  borderColor: "#93c5fd",
+                                  background: "#eff6ff",
+                                  whiteSpace: "nowrap"
+                                }}
+                              >
+                                + Cấp quyền
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </section>
+              )}
+            </div>
           )}
 
           {/* SUBTAB 3: DATASET EXPORT */}

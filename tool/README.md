@@ -20,12 +20,20 @@ Hệ thống web thu thập dữ liệu giọng nói tiếng Việt có chêm xe
   - Tách biệt hoàn toàn, **không nhìn thấy bất kỳ chức năng quản trị nào**.
 
 ### 2. Vai trò Quản Trị Viên (Admin)
-- **Đăng nhập:** Bằng Khóa Quản trị bảo mật (`ADMIN_API_KEY`, mặc định môi trường dev: `liemwhisper-admin-secret-2026`).
+- **Đăng nhập linh hoạt:**
+  1. Đăng nhập bằng tài khoản Google (Gmail) đã được phân quyền quản trị (không cần mật khẩu riêng).
+  2. Đăng nhập bằng Khóa Quản trị bảo mật (`ADMIN_API_KEY`, mặc định môi trường dev: `liemwhisper-admin-secret-2026`).
 - **Dashboard Quản trị:**
-  1. **📊 Thống kê:** Tổng số môn học, câu hỏi, người tham gia, số bản thu, số giờ âm thanh đã duyệt.
+  1. **📊 Thống kê:** Tổng số môn học, câu hỏi, người tham gia, số bản thu, số giờ âm thanh đã thu thập và số lượng Admin.
   2. **📚 Quản lý Môn & Câu:** Tạo môn học mới, Nhập câu hỏi hàng loạt (Bulk Import) tự động bóc tách từ khóa.
-  3. **🎧 Studio Kiểm duyệt Ghi âm:** Nghe trực tiếp qua streaming audio, nghe tua, sửa verbatim transcript thực tế, duyệt (`approved`), từ chối (`rejected`), hoặc yêu cầu thu lại (`rerecord`).
+  3. **🛡️ Cấp quyền Admin (Gmail):** Nhập địa chỉ Gmail để cấp quyền quản trị, theo dõi danh sách Admin đang hoạt động, thu hồi quyền, hoặc cấp nhanh từ danh sách người tham gia Google.
   4. **💾 Xuất Dữ liệu:** Xuất Manifest JSON, CSV và tải trọn gói ZIP (tất cả audio + metadata) sẵn sàng huấn luyện AI.
+- **Quản lý Admin qua lệnh Terminal (CLI):**
+  ```bash
+  python tool/scripts/manage_admins.py list             # Xem danh sách Admin
+  python tool/scripts/manage_admins.py add user@gmail.com    # Cấp quyền Admin
+  python tool/scripts/manage_admins.py remove user@gmail.com # Thu hồi quyền
+  ```
 
 ## Phạm vi thư mục
 

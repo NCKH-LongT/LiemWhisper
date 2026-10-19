@@ -6,6 +6,8 @@ and secret-only participant authentication. Portable across SQLite & PostgreSQL.
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import secrets
 import time
 from contextlib import contextmanager
@@ -58,6 +60,13 @@ def setup_auth(db: Any) -> None:
                 failed_count INTEGER NOT NULL DEFAULT 0,
                 last_failed_at INTEGER NOT NULL DEFAULT 0,
                 locked_until INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS admin_emails (
+                email TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                created_by TEXT DEFAULT 'system'
             )
         """)
         if hasattr(c, "commit") and not hasattr(db, "__enter__") and not callable(db):
@@ -168,12 +177,17 @@ def admin_login(db: Any, supplied: str, expected: str, ttl_seconds: int = DEFAUL
 
         # Credentials valid: reset rate limit and create session
         _reset_rate_limit(c, "admin_login")
+        return create_admin_session(c, ttl_seconds)
 
-        now = int(time.time())
-        expires_at = now + ttl_seconds
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
+def create_admin_session(db: Any, ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS) -> str:
+    """Create a new admin session token with SHA-256 hash in database."""
+    now = int(time.time())
+    expires_at = now + ttl_seconds
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    with _get_db(db) as c:
         c.execute(
             "INSERT INTO admin_sessions (token_hash, created_at, expires_at, revoked_at) VALUES (?, ?, ?, NULL)",
             (token_hash, now, expires_at)
@@ -181,7 +195,7 @@ def admin_login(db: Any, supplied: str, expected: str, ttl_seconds: int = DEFAUL
         if hasattr(c, "commit") and not hasattr(db, "__enter__") and not callable(db):
             c.commit()
 
-        return raw_token
+    return raw_token
 
 
 def require_admin(db: Any, token: str | None) -> None:
@@ -267,3 +281,138 @@ def participant_login(db: Any, identifier: str | None) -> dict[str, Any]:
             raise HTTPException(401, "Invalid participant credentials")
 
         return dict(row)
+
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+
+def is_admin_email(db: Any, email: str | None) -> bool:
+    """Check if an email address has admin privileges via env or database."""
+    if not email or not isinstance(email, str):
+        return False
+    clean_email = email.strip().lower()
+    if not clean_email or "@" not in clean_email:
+        return False
+
+    env_emails = os.getenv("ADMIN_EMAILS", "")
+    if env_emails:
+        allowed = {e.strip().lower() for e in env_emails.split(",") if e.strip()}
+        if clean_email in allowed:
+            return True
+
+    with _get_db(db) as c:
+        row = c.execute(
+            "SELECT 1 FROM admin_emails WHERE LOWER(email) = ?",
+            (clean_email,)
+        ).fetchone()
+        if row:
+            return True
+
+    return False
+
+
+def add_admin_email(db: Any, email: str, created_by: str = "admin") -> dict[str, Any]:
+    """Grant admin role to an email address (e.g. Gmail)."""
+    if not email or not isinstance(email, str):
+        raise HTTPException(400, "Vui lòng nhập địa chỉ email hợp lệ.")
+
+    clean_email = email.strip().lower()
+    if not EMAIL_REGEX.match(clean_email):
+        raise HTTPException(400, "Định dạng email không hợp lệ (ví dụ: nguyenvanan@gmail.com).")
+
+    now = int(time.time())
+    with _get_db(db) as c:
+        row = c.execute(
+            "SELECT email FROM admin_emails WHERE LOWER(email) = ?",
+            (clean_email,)
+        ).fetchone()
+        if row:
+            raise HTTPException(400, f"Email '{clean_email}' đã có quyền Quản trị viên.")
+
+        c.execute(
+            "INSERT INTO admin_emails (email, created_at, created_by) VALUES (?, ?, ?)",
+            (clean_email, now, created_by)
+        )
+        try:
+            c.execute("UPDATE participants SET is_admin = 1 WHERE LOWER(email) = ?", (clean_email,))
+        except Exception:
+            pass
+
+        if hasattr(c, "commit") and not hasattr(db, "__enter__") and not callable(db):
+            c.commit()
+
+    return {"email": clean_email, "created_at": now, "created_by": created_by}
+
+
+def remove_admin_email(db: Any, email: str) -> bool:
+    """Revoke admin role from an email address."""
+    if not email or not isinstance(email, str):
+        return False
+
+    clean_email = email.strip().lower()
+    env_emails = os.getenv("ADMIN_EMAILS", "")
+    if env_emails:
+        allowed = {e.strip().lower() for e in env_emails.split(",") if e.strip()}
+        if clean_email in allowed:
+            raise HTTPException(400, f"Email '{clean_email}' được cấu hình cố định trong biến môi trường ADMIN_EMAILS, không thể xóa.")
+
+    with _get_db(db) as c:
+        cursor = c.execute(
+            "DELETE FROM admin_emails WHERE LOWER(email) = ?",
+            (clean_email,)
+        )
+        try:
+            c.execute("UPDATE participants SET is_admin = 0 WHERE LOWER(email) = ?", (clean_email,))
+        except Exception:
+            pass
+
+        rowcount = getattr(cursor, "rowcount", 0)
+        if hasattr(c, "commit") and not hasattr(db, "__enter__") and not callable(db):
+            c.commit()
+
+    return bool(rowcount and rowcount > 0)
+
+
+def list_admin_emails(db: Any) -> list[dict[str, Any]]:
+    """Return all granted admin emails merged with environment configured admins."""
+    admins_map: dict[str, dict[str, Any]] = {}
+
+    with _get_db(db) as c:
+        rows = c.execute(
+            "SELECT email, created_at, created_by FROM admin_emails ORDER BY created_at ASC"
+        ).fetchall()
+        for r in rows:
+            em = r["email"].strip().lower()
+            part = c.execute(
+                "SELECT id, participant_code, name, onboarded FROM participants WHERE LOWER(email) = ?",
+                (em,)
+            ).fetchone()
+            admins_map[em] = {
+                "email": em,
+                "created_at": int(r["created_at"]),
+                "created_by": r["created_by"] or "admin",
+                "linked": bool(part),
+                "name": (part["name"] if part and part["name"] else "") or (part["participant_code"] if part else ""),
+                "is_env": False,
+            }
+
+    env_emails = os.getenv("ADMIN_EMAILS", "")
+    if env_emails:
+        for e in env_emails.split(","):
+            em = e.strip().lower()
+            if em and em not in admins_map:
+                with _get_db(db) as c:
+                    part = c.execute(
+                        "SELECT id, participant_code, name FROM participants WHERE LOWER(email) = ?",
+                        (em,)
+                    ).fetchone()
+                admins_map[em] = {
+                    "email": em,
+                    "created_at": 0,
+                    "created_by": "env (ADMIN_EMAILS)",
+                    "linked": bool(part),
+                    "name": (part["name"] if part and part["name"] else "") or (part["participant_code"] if part else ""),
+                    "is_env": True,
+                }
+
+    return list(admins_map.values())

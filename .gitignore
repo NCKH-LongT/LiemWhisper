@@ -29,6 +29,7 @@ recordings/
 uploads/
 exports/
 artifacts/
+output/
 checkpoints/
 models/
 runs/
