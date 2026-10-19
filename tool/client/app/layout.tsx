@@ -1,3 +1,4 @@
+import "./globals.css";
 import type { ReactNode } from "react";
 
 export const metadata = {
@@ -17,16 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
         <script src="https://accounts.google.com/gsi/client" async defer></script>
       </head>
-      <body
-        style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-          margin: 0,
-          background: "#fafafa",
-          color: "#09090b",
-          WebkitFontSmoothing: "antialiased",
-          MozOsxFontSmoothing: "grayscale",
-        }}
-      >
+      <body>
         {children}
       </body>
     </html>

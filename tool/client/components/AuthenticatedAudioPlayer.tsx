@@ -87,9 +87,9 @@ export function AuthenticatedAudioPlayer({
       <div
         style={{
           fontSize: 13,
-          color: "#71717a",
+          color: "var(--muted)",
           padding: "8px 12px",
-          background: "#f4f4f5",
+          background: "var(--subtle)",
           borderRadius: 6,
           ...style
         }}
@@ -104,10 +104,10 @@ export function AuthenticatedAudioPlayer({
       <div
         style={{
           fontSize: 12,
-          color: "#b91c1c",
+          color: "var(--danger)",
           padding: "6px 10px",
-          background: "#fef2f2",
-          border: "1px solid #fee2e2",
+          background: "var(--danger-bg)",
+          border: "1px solid var(--danger-bg)",
           borderRadius: 6,
           ...style
         }}
@@ -119,7 +119,7 @@ export function AuthenticatedAudioPlayer({
 
   if (!objectUrl) {
     return (
-      <div style={{ fontSize: 13, color: "#a1a1aa", ...style }}>
+      <div style={{ fontSize: 13, color: "var(--muted)", ...style }}>
         Không có dữ liệu âm thanh
       </div>
     );

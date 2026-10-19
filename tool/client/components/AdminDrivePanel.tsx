@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirmation } from "./ui";
 import React, { useState, useEffect } from "react";
 import {
   DriveStatusResponse,
@@ -21,7 +22,7 @@ interface AdminDrivePanelProps {
 
 function CloudIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
     </svg>
   );
@@ -29,7 +30,7 @@ function CloudIcon({ size = 16 }: { size?: number }) {
 
 function RefreshIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
       <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -40,7 +41,7 @@ function RefreshIcon({ size = 14 }: { size?: number }) {
 
 function ExternalLinkIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
       <polyline points="15 3 21 3 21 9" />
       <line x1="10" y1="14" x2="21" y2="3" />
@@ -64,9 +65,11 @@ export function AdminDrivePanel({
 
   const statusText = formatDriveStatusText(driveStatus);
 
+  const { confirmAction, modal } = useConfirmation();
+
   async function handleCleanupDuplicates() {
     if (!adminToken) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       "Hệ thống sẽ quét Google Drive và CSDL để:\n" +
       "1. Gộp các thư mục trùng lặp của cùng một sinh viên thành 1 thư mục duy nhất.\n" +
       "2. Xóa các bản sao audio cũ/thừa, chỉ giữ lại đúng 1 bản thu âm hoàn chỉnh nhất cho mỗi câu.\n" +
@@ -202,15 +205,16 @@ export function AdminDrivePanel({
   }
 
   return (
-    <div
+    <div className="drive-panel"
       style={{
-        background: "#ffffff",
-        border: "1px solid #e4e4e7",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
         borderRadius: 12,
         padding: "20px 24px",
         marginBottom: 20
       }}
     >
+      {modal}
       <div
         style={{
           display: "flex",
@@ -223,7 +227,7 @@ export function AdminDrivePanel({
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <CloudIcon size={18} />
-            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>
               Lưu trữ đám mây Google Drive (Dual SQL + Drive)
             </h3>
             <span
@@ -235,16 +239,16 @@ export function AdminDrivePanel({
                 textTransform: "uppercase",
                 background:
                   statusText.state === "connected"
-                    ? "#dcfce7"
+                    ? "var(--success-bg)"
                     : statusText.state === "configured"
-                    ? "#fef3c7"
-                    : "#f4f4f5",
+                    ? "var(--subtle)"
+                    : "var(--subtle)",
                 color:
                   statusText.state === "connected"
-                    ? "#166534"
+                    ? "var(--success)"
                     : statusText.state === "configured"
-                    ? "#92400e"
-                    : "#71717a"
+                    ? "var(--warning)"
+                    : "var(--muted)"
               }}
             >
               {statusText.state === "connected"
@@ -254,41 +258,42 @@ export function AdminDrivePanel({
                 : "Chưa cấu hình"}
             </span>
           </div>
-          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0", lineHeight: 1.5 }}>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0", lineHeight: 1.5 }}>
             {statusText.subtitle}
           </p>
           {driveStatus?.folder_id && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#71717a" }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
               Mã thư mục đích:{" "}
               <code
                 style={{
                   fontFamily: "ui-monospace, monospace",
-                  background: "#f1f5f9",
+                  background: "var(--subtle)",
                   padding: "2px 6px",
                   borderRadius: 4,
-                  border: "1px solid #cbd5e1",
-                  color: "#0f172a"
+                  border: "1px solid var(--border)",
+                  color: "var(--text)"
                 }}
               >
                 {driveStatus.folder_id}
               </code>
+              <button className="text-button" style={{ marginLeft: 8 }} onClick={async () => { try { await navigator.clipboard.writeText(driveStatus.folder_id || ""); setError(""); setSyncNotice("Đã sao chép mã thư mục."); } catch { setError("Không thể sao chép. Vui lòng chọn và sao chép mã thư mục."); } }}>Sao chép</button>
             </div>
           )}
           {driveStatus?.connected && (
             <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ display: "inline-flex", gap: 6, fontSize: 12, background: "#f8fafc", padding: "4px 10px", borderRadius: 6, border: "1px solid #e2e8f0", alignItems: "center" }}>
+              <div style={{ display: "inline-flex", gap: 6, fontSize: 12, background: "var(--subtle)", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", alignItems: "center" }}>
                 <span>Đã lưu Drive:</span>
-                <strong style={{ color: "#16a34a" }}>{driveStatus.synced_count ?? 0}</strong>
-                <span style={{ color: "#94a3b8" }}>/</span>
+                <strong style={{ color: "var(--success)" }}>{driveStatus.synced_count ?? 0}</strong>
+                <span style={{ color: "var(--muted)" }}>/</span>
                 <span>Tổng:</span>
                 <strong>{driveStatus.total_recordings ?? 0} bản ghi</strong>
                 {(driveStatus.pending_count ?? 0) > 0 && (
-                  <span style={{ color: "#d97706", fontWeight: 600, marginLeft: 4 }}>
+                  <span style={{ color: "var(--warning)", fontWeight: 600, marginLeft: 4 }}>
                     ({driveStatus.pending_count} đang chờ đẩy)
                   </span>
                 )}
                 {(driveStatus.failed_count ?? 0) > 0 && (
-                  <span style={{ color: "#dc2626", fontWeight: 600, marginLeft: 4 }}>
+                  <span style={{ color: "var(--danger)", fontWeight: 600, marginLeft: 4 }}>
                     ({driveStatus.failed_count} lỗi)
                   </span>
                 )}
@@ -301,12 +306,12 @@ export function AdminDrivePanel({
           {driveStatus?.connected && (
             <>
               <button
-                onClick={handleSyncNow}
+                className="drive-primary" onClick={handleSyncNow}
                 disabled={syncing || loading || cleaning}
                 style={{
                   padding: "8px 14px",
-                  background: "#16a34a",
-                  color: "#ffffff",
+                  background: "var(--success)",
+                  color: "var(--on-primary)",
                   border: "none",
                   borderRadius: 8,
                   fontWeight: 600,
@@ -323,13 +328,13 @@ export function AdminDrivePanel({
               </button>
 
               <button
-                onClick={handleCleanupDuplicates}
+                className="drive-secondary" onClick={handleCleanupDuplicates}
                 disabled={cleaning || syncing || loading}
                 title="Quét gộp folder học viên bị trùng và xóa các bản thu thừa"
                 style={{
                   padding: "8px 14px",
-                  background: "#0284c7",
-                  color: "#ffffff",
+                  background: "var(--primary)",
+                  color: "var(--on-primary)",
                   border: "none",
                   borderRadius: 8,
                   fontWeight: 600,
@@ -341,7 +346,7 @@ export function AdminDrivePanel({
                   boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
                 }}
               >
-                <span>{cleaning ? "Đang dọn dẹp..." : "🧹 Dọn dẹp bản sao trùng lặp"}</span>
+                <span>{cleaning ? "Đang dọn dẹp..." : "Dọn dẹp bản sao trùng lặp"}</span>
               </button>
             </>
           )}
@@ -351,9 +356,9 @@ export function AdminDrivePanel({
             disabled={loading || connecting || syncing || cleaning}
             style={{
               padding: "8px 14px",
-              background: "#ffffff",
-              color: "#27272a",
-              border: "1px solid #d4d4d8",
+              background: "var(--surface)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
               borderRadius: 8,
               fontWeight: 500,
               fontSize: 13,
@@ -368,13 +373,13 @@ export function AdminDrivePanel({
           </button>
 
           <button
-            onClick={handleConnect}
+            className={driveStatus?.connected ? "drive-secondary" : "drive-primary"} onClick={handleConnect}
             disabled={connecting || loading || syncing || cleaning || Boolean(driveStatus && !driveStatus.configured)}
             title={driveStatus && !driveStatus.configured ? "Chưa cấu hình Client ID / Secret trên máy chủ" : ""}
             style={{
               padding: "8px 14px",
-              background: driveStatus?.connected ? "#27272a" : "#09090b",
-              color: "#ffffff",
+              background: driveStatus?.connected ? "var(--text)" : "var(--text)",
+              color: "var(--on-primary)",
               border: "none",
               borderRadius: 8,
               fontWeight: 600,
@@ -403,9 +408,9 @@ export function AdminDrivePanel({
           style={{
             marginTop: 12,
             padding: "8px 12px",
-            background: "#f0fdf4",
-            border: "1px solid #bbf7d0",
-            color: "#166534",
+            background: "var(--success-bg)",
+            border: "1px solid var(--success-bg)",
+            color: "var(--success)",
             borderRadius: 6,
             fontSize: 12,
             fontWeight: 500
@@ -420,9 +425,9 @@ export function AdminDrivePanel({
           style={{
             marginTop: 12,
             padding: "8px 12px",
-            background: "#f0f9ff",
-            border: "1px solid #bae6fd",
-            color: "#0369a1",
+            background: "var(--subtle)",
+            border: "1px solid var(--border)",
+            color: "var(--primary)",
             borderRadius: 6,
             fontSize: 12,
             fontWeight: 500
@@ -437,9 +442,9 @@ export function AdminDrivePanel({
           style={{
             marginTop: 12,
             padding: "8px 12px",
-            background: "#fef2f2",
-            border: "1px solid #fee2e2",
-            color: "#991b1b",
+            background: "var(--danger-bg)",
+            border: "1px solid var(--danger-bg)",
+            color: "var(--danger)",
             borderRadius: 6,
             fontSize: 12
           }}

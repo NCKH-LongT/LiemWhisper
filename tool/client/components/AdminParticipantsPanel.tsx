@@ -131,27 +131,27 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
       {/* Summary Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         <div style={cardStatStyle}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>TỔNG NGƯỜI ĐĂNG KÝ</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>TỔNG NGƯỜI ĐĂNG KÝ</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>
             {participants.length}
           </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Thí sinh trong hệ thống</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Thí sinh trong hệ thống</div>
         </div>
 
         <div style={cardStatStyle}>
-          <div style={{ fontSize: 12, color: "#166534", fontWeight: 600 }}>ĐÃ HOÀN THÀNH</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#15803d", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 600 }}>ĐÃ HOÀN THÀNH</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--success)", marginTop: 4 }}>
             {totalCompletedCount}
           </div>
-          <div style={{ fontSize: 11, color: "#86efac", marginTop: 2 }}>Đã nộp bài đầy đủ</div>
+          <div style={{ fontSize: 11, color: "var(--success-bg)", marginTop: 2 }}>Đã nộp bài đầy đủ</div>
         </div>
 
         <div style={cardStatStyle}>
-          <div style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>TỔNG BẢN THU ÂM</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#2563eb", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>TỔNG BẢN THU ÂM</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {totalRecordedCount}
           </div>
-          <div style={{ fontSize: 11, color: "#93c5fd", marginTop: 2 }}>Câu đã được ghi âm</div>
+          <div style={{ fontSize: 11, color: "var(--border)", marginTop: 2 }}>Câu đã được ghi âm</div>
         </div>
       </div>
 
@@ -159,10 +159,10 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
       <section style={panelCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>
               Danh sách Người dùng / Sinh viên đăng ký
             </h2>
-            <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
               Bấm vào tên hoặc nút "Xem chi tiết" để nghe toàn bộ audio các câu người đó đã thu
             </div>
           </div>
@@ -188,24 +188,24 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
         </div>
 
         {error && (
-          <div style={{ padding: "10px 14px", background: "#fef2f2", color: "#dc2626", borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+          <div style={{ padding: "10px 14px", background: "var(--danger-bg)", color: "var(--danger)", borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
             {error}
           </div>
         )}
 
         {loading && participants.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center", color: "#71717a", fontSize: 14 }}>
+          <div style={{ padding: "32px 0", textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
             Đang tải dữ liệu danh sách người dùng...
           </div>
         ) : filteredParticipants.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center", color: "#71717a", fontSize: 14, background: "#f8fafc", borderRadius: 8 }}>
+          <div style={{ padding: "32px 0", textAlign: "center", color: "var(--muted)", fontSize: 14, background: "var(--subtle)", borderRadius: 8 }}>
             {search ? "Không tìm thấy người tham gia nào khớp với từ khóa tìm kiếm." : "Chưa có người dùng nào đăng ký."}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#475569" }}>
+                <tr style={{ background: "var(--subtle)", borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--muted)" }}>
                   <th style={{ padding: "12px 14px", fontWeight: 600 }}>Mã SV / Thí sinh</th>
                   <th style={{ padding: "12px 14px", fontWeight: 600 }}>Họ và tên</th>
                   <th style={{ padding: "12px 14px", fontWeight: 600 }}>Tài khoản Gmail</th>
@@ -227,50 +227,50 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
                     <tr
                       key={p.id}
                       style={{
-                        borderBottom: "1px solid #f1f5f9",
+                        borderBottom: "1px solid var(--subtle)",
                         cursor: "pointer",
                         transition: "background 0.15s"
                       }}
                       onClick={() => openParticipantDetail(p)}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--subtle)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
                       <td style={{ padding: "12px 14px" }}>
-                        <div style={{ fontWeight: 700, color: "#09090b", display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
                           <span>{p.participant_code || `SV_${p.id.slice(0, 6)}`}</span>
                           {p.is_admin ? (
-                            <span style={{ fontSize: 10, background: "#dbeafe", color: "#1e40af", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
+                            <span style={{ fontSize: 10, background: "var(--subtle)", color: "var(--primary)", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
                               Admin
                             </span>
                           ) : null}
                         </div>
                       </td>
-                      <td style={{ padding: "12px 14px", color: "#09090b", fontWeight: 500 }}>
-                        {p.name || <span style={{ color: "#94a3b8" }}>Chưa cập nhật</span>}
+                      <td style={{ padding: "12px 14px", color: "var(--text)", fontWeight: 500 }}>
+                        {p.name || <span style={{ color: "var(--muted)" }}>Chưa cập nhật</span>}
                       </td>
-                      <td style={{ padding: "12px 14px", color: "#64748b" }}>
-                        {p.email || <span style={{ color: "#94a3b8" }}>-</span>}
+                      <td style={{ padding: "12px 14px", color: "var(--muted)" }}>
+                        {p.email || <span style={{ color: "var(--muted)" }}>-</span>}
                       </td>
                       <td style={{ padding: "12px 14px" }}>
                         {isCompleted ? (
-                          <span style={{ display: "inline-block", background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ display: "inline-block", background: "var(--success-bg)", color: "var(--success)", padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
                             Đã hoàn thành
                           </span>
                         ) : (
-                          <span style={{ display: "inline-block", background: "#fef3c7", color: "#92400e", padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ display: "inline-block", background: "var(--subtle)", color: "var(--warning)", padding: "3px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
                             Đang thu âm
                           </span>
                         )}
                       </td>
                       <td style={{ padding: "12px 14px", textAlign: "center" }}>
-                        <span style={{ display: "inline-block", background: p.recordings_count > 0 ? "#eff6ff" : "#f1f5f9", color: p.recordings_count > 0 ? "#1d4ed8" : "#94a3b8", padding: "2px 8px", borderRadius: 12, fontWeight: 700, fontSize: 12 }}>
+                        <span style={{ display: "inline-block", background: p.recordings_count > 0 ? "var(--subtle)" : "var(--subtle)", color: p.recordings_count > 0 ? "var(--primary)" : "var(--muted)", padding: "2px 8px", borderRadius: 12, fontWeight: 700, fontSize: 12 }}>
                           {p.recordings_count || 0} câu
                         </span>
                       </td>
-                      <td style={{ padding: "12px 14px", textAlign: "center", color: "#475569", fontWeight: 500 }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center", color: "var(--muted)", fontWeight: 500 }}>
                         {p.recordings_count > 0 ? durationStr : "-"}
                       </td>
-                      <td style={{ padding: "12px 14px", color: "#64748b", fontSize: 12 }}>
+                      <td style={{ padding: "12px 14px", color: "var(--muted)", fontSize: 12 }}>
                         {regDate}
                       </td>
                       <td style={{ padding: "12px 14px", textAlign: "right" }}>
@@ -302,26 +302,26 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid var(--border)", background: "var(--subtle)" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#09090b" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>
                     {selectedParticipant.name || selectedParticipant.participant_code}
                   </h3>
-                  <span style={{ background: "#e2e8f0", color: "#334155", padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+                  <span style={{ background: "var(--border)", color: "var(--text)", padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
                     Mã SV: {selectedParticipant.participant_code}
                   </span>
                   {selectedParticipant.completed_at ? (
-                    <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                    <span style={{ background: "var(--success-bg)", color: "var(--success)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
                       Đã hoàn thành bài thi
                     </span>
                   ) : (
-                    <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                    <span style={{ background: "var(--subtle)", color: "var(--warning)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
                       Chưa hoàn thành
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
+                <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
                   Email: {selectedParticipant.email || "N/A"} • Tổng số: {recordings.length} câu đã thu âm
                 </div>
               </div>
@@ -339,17 +339,17 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
             {/* Modal Body */}
             <div style={{ padding: "20px 24px", overflowY: "auto", maxHeight: "calc(85vh - 90px)" }}>
               {recordingsError && (
-                <div style={{ padding: "12px 16px", background: "#fef2f2", color: "#dc2626", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
+                <div style={{ padding: "12px 16px", background: "var(--danger-bg)", color: "var(--danger)", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
                   {recordingsError}
                 </div>
               )}
 
               {loadingRecordings ? (
-                <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b" }}>
+                <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)" }}>
                   Đang tải danh sách bài thu âm và âm thanh...
                 </div>
               ) : recordings.length === 0 ? (
-                <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b", background: "#f8fafc", borderRadius: 8 }}>
+                <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", background: "var(--subtle)", borderRadius: 8 }}>
                   Người dùng này chưa có bản thu âm nào.
                 </div>
               ) : (
@@ -362,40 +362,40 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
                       <div
                         key={rec.id}
                         style={{
-                          border: "1px solid #e2e8f0",
+                          border: "1px solid var(--border)",
                           borderRadius: 8,
                           padding: "16px 18px",
-                          background: "#ffffff",
+                          background: "var(--surface)",
                           boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
                         }}
                       >
                         {/* Question Title & Meta */}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ background: "#2563eb", color: "#ffffff", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>
+                            <span style={{ background: "var(--primary)", color: "var(--on-primary)", fontSize: 12, fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>
                               Câu {index + 1}
                             </span>
-                            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
                               {rec.course_title || "Khóa học"}
                             </span>
                           </div>
 
                           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                             {isSynced ? (
-                              <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                              <span style={{ background: "var(--success-bg)", color: "var(--success)", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
                                 Drive: Đã đồng bộ
                               </span>
                             ) : (
-                              <span style={{ background: "#f1f5f9", color: "#64748b", padding: "2px 6px", borderRadius: 4 }}>
+                              <span style={{ background: "var(--subtle)", color: "var(--muted)", padding: "2px 6px", borderRadius: 4 }}>
                                 Drive: Chờ đồng bộ
                               </span>
                             )}
-                            <span style={{ color: "#94a3b8" }}>{timeStr}</span>
+                            <span style={{ color: "var(--muted)" }}>{timeStr}</span>
                           </div>
                         </div>
 
                         {/* Prompt Text */}
-                        <div style={{ fontSize: 15, fontWeight: 600, color: "#09090b", marginBottom: 10, lineHeight: 1.45 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 10, lineHeight: 1.45 }}>
                           {rec.text}
                         </div>
 
@@ -406,8 +406,8 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
                               <span
                                 key={tIdx}
                                 style={{
-                                  background: "#f1f5f9",
-                                  color: "#334155",
+                                  background: "var(--subtle)",
+                                  color: "var(--text)",
                                   fontSize: 11,
                                   fontWeight: 600,
                                   padding: "2px 6px",
@@ -421,7 +421,7 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
                         )}
 
                         {/* Audio Player & Duration Info */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "#f8fafc", padding: "10px 14px", borderRadius: 6, border: "1px solid #f1f5f9" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "var(--subtle)", padding: "10px 14px", borderRadius: 6, border: "1px solid var(--subtle)" }}>
                           <div style={{ flex: 1, minWidth: 260 }}>
                             <AuthenticatedAudioPlayer
                               apiBase={apiBase}
@@ -431,9 +431,9 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
                             />
                           </div>
 
-                          <div style={{ fontSize: 12, color: "#475569", fontWeight: 500, textAlign: "right" }}>
+                          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, textAlign: "right" }}>
                             <div>Thời lượng: <strong>{rec.duration_seconds ? rec.duration_seconds.toFixed(1) : "0.0"}s</strong></div>
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Định dạng: {rec.format?.toUpperCase() || "WEBM"}</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>Định dạng: {rec.format?.toUpperCase() || "WEBM"}</div>
                           </div>
                         </div>
                       </div>
@@ -451,16 +451,16 @@ export function AdminParticipantsPanel({ apiBase, adminKey }: AdminParticipantsP
 
 // Inline styles
 const cardStatStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "16px 18px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
 };
 
 const panelCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "20px 22px",
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
@@ -470,7 +470,7 @@ const searchInputStyle: React.CSSProperties = {
   padding: "8px 14px",
   fontSize: 13,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
+  border: "1px solid var(--border)",
   outline: "none",
   minWidth: 260
 };
@@ -480,9 +480,9 @@ const btnRefreshStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  color: "#334155",
+  border: "1px solid var(--border)",
+  background: "var(--subtle)",
+  color: "var(--text)",
   cursor: "pointer"
 };
 
@@ -491,9 +491,9 @@ const btnDetailStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   borderRadius: 6,
-  border: "1px solid #93c5fd",
-  background: "#eff6ff",
-  color: "#1d4ed8",
+  border: "1px solid var(--border)",
+  background: "var(--subtle)",
+  color: "var(--primary)",
   cursor: "pointer"
 };
 
@@ -513,7 +513,7 @@ const modalBackdropStyle: React.CSSProperties = {
 };
 
 const modalContentStyle: React.CSSProperties = {
-  background: "#ffffff",
+  background: "var(--surface)",
   borderRadius: 12,
   maxWidth: 820,
   width: "100%",
@@ -525,7 +525,7 @@ const btnCloseModalStyle: React.CSSProperties = {
   background: "transparent",
   border: "none",
   fontSize: 18,
-  color: "#64748b",
+  color: "var(--muted)",
   cursor: "pointer",
   padding: "4px 8px",
   borderRadius: 4

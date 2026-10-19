@@ -21,7 +21,7 @@ test("stopping recording keeps preview URL alive until explicitly discarded", as
   let preview = "";
   let recorder: any;
   const stopped: string[] = [];
-  const refs = Object.fromEntries(["timerRef", "animFrameRef", "streamRef", "audioContextRef", "analyserRef", "recorderRef", "urlRef", "chunksRef"].map(name => [name, { current: null }]));
+  const refs: Record<string, { current: any }> = Object.fromEntries(["timerRef", "animFrameRef", "streamRef", "audioContextRef", "analyserRef", "recorderRef", "urlRef", "chunksRef"].map(name => [name, { current: null }]));
   refs.urlRef.current = "";
   const source = [
     page.slice(page.indexOf("  function cleanupMedia("), page.indexOf("  function alertError(")),

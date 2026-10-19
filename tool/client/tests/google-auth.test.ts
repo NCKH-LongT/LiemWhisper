@@ -48,6 +48,7 @@ function onboardingHarness() {
         useRef: (initial: unknown) => ({ current: initial }),
         useEffect: (effect: () => void) => { effects.push(effect); }
       };
+      if (name === "../components/ui") return { useConfirmation: () => ({ confirmAction: async () => false, modal: null }) };
       if (name === "react/jsx-runtime") return require(name);
       if (name === "../lib/security") return {
         validateNoSecretInUrl: () => ({ valid: true }),

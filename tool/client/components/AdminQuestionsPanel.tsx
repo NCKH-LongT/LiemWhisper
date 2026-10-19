@@ -139,19 +139,19 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
       {/* Summary Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         <div style={cardStatStyle}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>TỔNG SỐ CÂU HỎI</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>TỔNG SỐ CÂU HỎI</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>
             {totalPromptsCount}
           </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Câu hỏi trong toàn hệ thống</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Câu hỏi trong toàn hệ thống</div>
         </div>
 
         <div style={cardStatStyle}>
-          <div style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>TỔNG BẢN THU TRẢ LỜI</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#2563eb", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>TỔNG BẢN THU TRẢ LỜI</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {totalAnswersCount}
           </div>
-          <div style={{ fontSize: 11, color: "#93c5fd", marginTop: 2 }}>Bài thu từ các sinh viên</div>
+          <div style={{ fontSize: 11, color: "var(--border)", marginTop: 2 }}>Bài thu từ các sinh viên</div>
         </div>
       </div>
 
@@ -159,10 +159,10 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
       <section style={panelCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>
               Danh sách Câu hỏi & Bài thu âm trả lời
             </h2>
-            <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
               Chọn câu hỏi để nghe toàn bộ audio trả lời từ các sinh viên khác nhau
             </div>
           </div>
@@ -203,24 +203,24 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
         </div>
 
         {error && (
-          <div style={{ padding: "10px 14px", background: "#fef2f2", color: "#dc2626", borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+          <div style={{ padding: "10px 14px", background: "var(--danger-bg)", color: "var(--danger)", borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
             {error}
           </div>
         )}
 
         {loading && prompts.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center", color: "#71717a", fontSize: 14 }}>
+          <div style={{ padding: "32px 0", textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
             Đang tải dữ liệu danh sách câu hỏi...
           </div>
         ) : filteredPrompts.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center", color: "#71717a", fontSize: 14, background: "#f8fafc", borderRadius: 8 }}>
+          <div style={{ padding: "32px 0", textAlign: "center", color: "var(--muted)", fontSize: 14, background: "var(--subtle)", borderRadius: 8 }}>
             {search ? "Không tìm thấy câu hỏi nào khớp với từ khóa tìm kiếm." : "Chưa có câu hỏi nào trong môn học này."}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#475569" }}>
+                <tr style={{ background: "var(--subtle)", borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--muted)" }}>
                   <th style={{ padding: "12px 14px", fontWeight: 600, width: 60 }}>STT</th>
                   <th style={{ padding: "12px 14px", fontWeight: 600 }}>Nội dung câu hỏi (Prompt)</th>
                   <th style={{ padding: "12px 14px", fontWeight: 600, width: 170 }}>Môn học</th>
@@ -235,19 +235,19 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                     <tr
                       key={p.id}
                       style={{
-                        borderBottom: "1px solid #f1f5f9",
+                        borderBottom: "1px solid var(--subtle)",
                         cursor: "pointer",
                         transition: "background 0.15s"
                       }}
                       onClick={() => openPromptDetail(p)}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--subtle)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <td style={{ padding: "12px 14px", color: "#475569", fontWeight: 700, whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "12px 14px", color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>
                         {p.question_number ? `Câu ${String(p.question_number).padStart(2, "0")}` : `#${idx + 1}`}
                       </td>
                       <td style={{ padding: "12px 14px" }}>
-                        <div style={{ fontWeight: 600, color: "#09090b", lineHeight: 1.45, marginBottom: 4 }}>
+                        <div style={{ fontWeight: 600, color: "var(--text)", lineHeight: 1.45, marginBottom: 4 }}>
                           {p.text}
                         </div>
                         {p.target_terms && p.target_terms.length > 0 && (
@@ -256,8 +256,8 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                               <span
                                 key={tIdx}
                                 style={{
-                                  background: "#f1f5f9",
-                                  color: "#475569",
+                                  background: "var(--subtle)",
+                                  color: "var(--muted)",
                                   fontSize: 10,
                                   fontWeight: 600,
                                   padding: "1px 5px",
@@ -270,15 +270,15 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: "12px 14px", color: "#64748b", fontSize: 12 }}>
+                      <td style={{ padding: "12px 14px", color: "var(--muted)", fontSize: 12 }}>
                         {p.course_title || "Khóa học"}
                       </td>
                       <td style={{ padding: "12px 14px", textAlign: "center" }}>
                         <span
                           style={{
                             display: "inline-block",
-                            background: hasRecordings ? "#eff6ff" : "#f1f5f9",
-                            color: hasRecordings ? "#1d4ed8" : "#94a3b8",
+                            background: hasRecordings ? "var(--subtle)" : "var(--subtle)",
+                            color: hasRecordings ? "var(--primary)" : "var(--muted)",
                             padding: "2px 8px",
                             borderRadius: 12,
                             fontWeight: 700,
@@ -317,19 +317,19 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
         <div style={modalBackdropStyle} onClick={closeDetail}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "1px solid var(--border)", background: "var(--subtle)" }}>
               <div style={{ flex: 1, paddingRight: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ background: "#2563eb", color: "#ffffff", padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
+                  <span style={{ background: "var(--primary)", color: "var(--on-primary)", padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
                     {selectedPrompt.question_number ? `Câu ${String(selectedPrompt.question_number).padStart(2, "0")}` : "Câu hỏi"}
                   </span>
-                  <span style={{ color: "#64748b", fontSize: 13, fontWeight: 600 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>
                     {selectedPrompt.course_title}
                   </span>
-                  <span style={{ color: "#94a3b8", fontSize: 12 }}>• {promptRecordings.length} bản ghi âm</span>
+                  <span style={{ color: "var(--muted)", fontSize: 12 }}>• {promptRecordings.length} bản ghi âm</span>
                 </div>
 
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#09090b", lineHeight: 1.45 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", lineHeight: 1.45 }}>
                   {selectedPrompt.text}
                 </div>
 
@@ -339,8 +339,8 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                       <span
                         key={tIdx}
                         style={{
-                          background: "#e2e8f0",
-                          color: "#334155",
+                          background: "var(--border)",
+                          color: "var(--text)",
                           fontSize: 11,
                           fontWeight: 600,
                           padding: "2px 6px",
@@ -367,17 +367,17 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
             {/* Modal Body */}
             <div style={{ padding: "20px 24px", overflowY: "auto", maxHeight: "calc(85vh - 120px)" }}>
               {recordingsError && (
-                <div style={{ padding: "12px 16px", background: "#fef2f2", color: "#dc2626", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
+                <div style={{ padding: "12px 16px", background: "var(--danger-bg)", color: "var(--danger)", borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
                   {recordingsError}
                 </div>
               )}
 
               {loadingRecordings ? (
-                <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b" }}>
+                <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)" }}>
                   Đang tải danh sách bài thu âm từ các sinh viên...
                 </div>
               ) : promptRecordings.length === 0 ? (
-                <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b", background: "#f8fafc", borderRadius: 8 }}>
+                <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", background: "var(--subtle)", borderRadius: 8 }}>
                   Chưa có sinh viên nào ghi âm trả lời câu hỏi này.
                 </div>
               ) : (
@@ -390,10 +390,10 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                       <div
                         key={rec.id}
                         style={{
-                          border: "1px solid #e2e8f0",
+                          border: "1px solid var(--border)",
                           borderRadius: 8,
                           padding: "16px 18px",
-                          background: "#ffffff",
+                          background: "var(--surface)",
                           boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
                         }}
                       >
@@ -404,8 +404,8 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                               width: 30,
                               height: 30,
                               borderRadius: "50%",
-                              background: "#eff6ff",
-                              color: "#2563eb",
+                              background: "var(--subtle)",
+                              color: "var(--primary)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -415,15 +415,15 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                               {(rec.participant_name || rec.participant_code || "S").slice(0, 1).toUpperCase()}
                             </div>
                             <div>
-                              <div style={{ fontWeight: 700, color: "#09090b", fontSize: 14 }}>
+                              <div style={{ fontWeight: 700, color: "var(--text)", fontSize: 14 }}>
                                 {rec.participant_name || rec.participant_code}
                                 {rec.participant_name && (
-                                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 400, marginLeft: 6 }}>
+                                  <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 400, marginLeft: 6 }}>
                                     ({rec.participant_code})
                                   </span>
                                 )}
                               </div>
-                              <div style={{ fontSize: 11, color: "#64748b" }}>
+                              <div style={{ fontSize: 11, color: "var(--muted)" }}>
                                 {rec.participant_email || "N/A"}
                               </div>
                             </div>
@@ -431,20 +431,20 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
 
                           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                             {isSynced ? (
-                              <span style={{ background: "#dcfce7", color: "#166534", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
+                              <span style={{ background: "var(--success-bg)", color: "var(--success)", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
                                 Drive: Đã đồng bộ
                               </span>
                             ) : (
-                              <span style={{ background: "#f1f5f9", color: "#64748b", padding: "2px 6px", borderRadius: 4 }}>
+                              <span style={{ background: "var(--subtle)", color: "var(--muted)", padding: "2px 6px", borderRadius: 4 }}>
                                 Drive: Chờ đồng bộ
                               </span>
                             )}
-                            <span style={{ color: "#94a3b8" }}>{timeStr}</span>
+                            <span style={{ color: "var(--muted)" }}>{timeStr}</span>
                           </div>
                         </div>
 
                         {/* Audio Player & Duration Info */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "#f8fafc", padding: "10px 14px", borderRadius: 6, border: "1px solid #f1f5f9" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "var(--subtle)", padding: "10px 14px", borderRadius: 6, border: "1px solid var(--subtle)" }}>
                           <div style={{ flex: 1, minWidth: 260 }}>
                             <AuthenticatedAudioPlayer
                               apiBase={apiBase}
@@ -454,9 +454,9 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                             />
                           </div>
 
-                          <div style={{ fontSize: 12, color: "#475569", fontWeight: 500, textAlign: "right" }}>
+                          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, textAlign: "right" }}>
                             <div>Thời lượng: <strong>{rec.duration_seconds ? rec.duration_seconds.toFixed(1) : "0.0"}s</strong></div>
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Định dạng: {rec.format?.toUpperCase() || "WEBM"}</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>Định dạng: {rec.format?.toUpperCase() || "WEBM"}</div>
                           </div>
                         </div>
                       </div>
@@ -474,16 +474,16 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
 
 // Inline styles
 const cardStatStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "16px 18px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
 };
 
 const panelCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "20px 22px",
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
@@ -493,16 +493,16 @@ const selectStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontSize: 13,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
+  border: "1px solid var(--border)",
   outline: "none",
-  background: "#ffffff"
+  background: "var(--surface)"
 };
 
 const searchInputStyle: React.CSSProperties = {
   padding: "8px 14px",
   fontSize: 13,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
+  border: "1px solid var(--border)",
   outline: "none",
   minWidth: 240
 };
@@ -512,9 +512,9 @@ const btnRefreshStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  color: "#334155",
+  border: "1px solid var(--border)",
+  background: "var(--subtle)",
+  color: "var(--text)",
   cursor: "pointer"
 };
 
@@ -523,9 +523,9 @@ const btnDetailStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   borderRadius: 6,
-  border: "1px solid #93c5fd",
-  background: "#eff6ff",
-  color: "#1d4ed8",
+  border: "1px solid var(--border)",
+  background: "var(--subtle)",
+  color: "var(--primary)",
   cursor: "pointer"
 };
 
@@ -545,7 +545,7 @@ const modalBackdropStyle: React.CSSProperties = {
 };
 
 const modalContentStyle: React.CSSProperties = {
-  background: "#ffffff",
+  background: "var(--surface)",
   borderRadius: 12,
   maxWidth: 860,
   width: "100%",
@@ -557,7 +557,7 @@ const btnCloseModalStyle: React.CSSProperties = {
   background: "transparent",
   border: "none",
   fontSize: 18,
-  color: "#64748b",
+  color: "var(--muted)",
   cursor: "pointer",
   padding: "4px 8px",
   borderRadius: 4

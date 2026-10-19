@@ -19,6 +19,8 @@ import { AdminParticipantsPanel } from "../components/AdminParticipantsPanel";
 import { AdminQuestionsPanel } from "../components/AdminQuestionsPanel";
 import { AdminDashboardDuration } from "../components/AdminDashboardDuration";
 
+import { Button, Progress, Select, Skeleton, Toast, useConfirmation } from "../components/ui";
+
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type Course = {
@@ -95,7 +97,7 @@ type AdminStats = {
 
 function MicIcon({ size = 16, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
       <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
       <line x1="12" y1="19" x2="12" y2="22" />
@@ -113,7 +115,7 @@ function StopIcon({ size = 14, color = "currentColor" }: { size?: number; color?
 
 function RefreshIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
       <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -132,7 +134,7 @@ function CheckIcon({ size = 14, color = "currentColor" }: { size?: number; color
 
 function CrossIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
@@ -141,7 +143,7 @@ function CrossIcon({ size = 14, color = "currentColor" }: { size?: number; color
 
 function ChevronLeftIcon({ size = 15 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="15 18 9 12 15 6" />
     </svg>
   );
@@ -149,7 +151,7 @@ function ChevronLeftIcon({ size = 15 }: { size?: number }) {
 
 function ChevronRightIcon({ size = 15 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );
@@ -157,7 +159,7 @@ function ChevronRightIcon({ size = 15 }: { size?: number }) {
 
 function DownloadIcon({ size = 15, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -167,7 +169,7 @@ function DownloadIcon({ size = 15, color = "currentColor" }: { size?: number; co
 
 function LogoutIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
@@ -177,7 +179,7 @@ function LogoutIcon({ size = 14 }: { size?: number }) {
 
 function UserIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
     </svg>
@@ -186,7 +188,7 @@ function UserIcon({ size = 14 }: { size?: number }) {
 
 function ShieldIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
@@ -194,7 +196,7 @@ function ShieldIcon({ size = 14, color = "currentColor" }: { size?: number; colo
 
 function UsersIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
@@ -205,7 +207,7 @@ function UsersIcon({ size = 14, color = "currentColor" }: { size?: number; color
 
 function TrashIcon({ size = 14, color = "currentColor" }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
@@ -245,7 +247,9 @@ function getBestMimeType(): string {
 }
 
 export default function Home() {
+  const { confirmAction, modal } = useConfirmation();
   // Session & Role management: "guest" | "student" | "admin"
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [role, setRole] = useState<"guest" | "student" | "admin">("guest");
   const [authRoleTab, setAuthRoleTab] = useState<"student" | "admin">("student");
 
@@ -712,7 +716,7 @@ export default function Home() {
         ? `Bạn đã hoàn thành ${recordedCount}/${tasks.length} câu. Bạn có chắc chắn muốn kết thúc bài thi ngay bây giờ? Thư cảm ơn sẽ được gửi đến ${email || "email của bạn"}.`
         : `Bạn đã hoàn thành toàn bộ ${recordedCount}/${tasks.length} câu hỏi. Xác nhận kết thúc bài thi và nhận email cảm ơn từ ban nghiên cứu?`;
 
-    if (!confirm(confirmMsg)) return;
+    if (!await confirmAction(confirmMsg)) return;
 
     setBusy(true);
     setError("");
@@ -812,7 +816,7 @@ export default function Home() {
       const barHeight = Math.max(3, (val / 255) * canvas.height);
       const y = (canvas.height - barHeight) / 2;
 
-      ctx.fillStyle = isRecording ? "#dc2626" : "#2563eb";
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(isRecording ? "--danger" : "--primary").trim();
       ctx.beginPath();
       ctx.roundRect(x, y, barWidth - 3, barHeight, 2);
       ctx.fill();
@@ -1187,9 +1191,9 @@ export default function Home() {
               key={idx}
               style={{
                 fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                background: "#f1f5f9",
-                color: "#0f172a",
-                border: "1px solid #cbd5e1",
+                background: "var(--subtle)",
+                color: "var(--text)",
+                border: "1px solid var(--border)",
                 padding: "2px 6px",
                 borderRadius: "4px",
                 fontWeight: 600,
@@ -1219,16 +1223,16 @@ export default function Home() {
       alignItems: "center",
       paddingBottom: 20,
       marginBottom: 24,
-      borderBottom: "1px solid #e5e7eb",
+      borderBottom: "1px solid var(--border)",
       flexWrap: "wrap" as const,
       gap: 16
     },
-    title: { fontSize: 20, fontWeight: 700, color: "#09090b", margin: "2px 0 0", letterSpacing: "-0.02em" },
-    subtitle: { fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase" as const, letterSpacing: "0.06em" },
+    title: { fontSize: 20, fontWeight: 700, color: "var(--text)", margin: "2px 0 0", letterSpacing: "-0.02em" },
+    subtitle: { fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase" as const, letterSpacing: "0.06em" },
     card: {
-      background: "#ffffff",
-      border: "1px solid #e4e4e7",
-      borderRadius: 12,
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 16,
       padding: "24px",
       marginBottom: 20,
       boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
@@ -1237,11 +1241,11 @@ export default function Home() {
       display: "block",
       width: "100%",
       padding: "10px 14px",
-      border: "1px solid #d4d4d8",
+      border: "1px solid var(--border)",
       borderRadius: 8,
       fontSize: 14,
-      color: "#09090b",
-      background: "#ffffff",
+      color: "var(--text)",
+      background: "var(--surface)",
       boxSizing: "border-box" as const,
       marginTop: 6,
       marginBottom: 16,
@@ -1249,8 +1253,8 @@ export default function Home() {
     },
     btnPrimary: {
       padding: "10px 18px",
-      background: "#09090b",
-      color: "#ffffff",
+      background: "var(--primary)",
+      color: "var(--on-primary)",
       border: "none",
       borderRadius: 8,
       fontWeight: 600,
@@ -1263,9 +1267,9 @@ export default function Home() {
     },
     btnSecondary: {
       padding: "9px 15px",
-      background: "#ffffff",
-      color: "#27272a",
-      border: "1px solid #d4d4d8",
+      background: "var(--surface)",
+      color: "var(--text)",
+      border: "1px solid var(--border)",
       borderRadius: 8,
       fontWeight: 500,
       fontSize: 13,
@@ -1276,9 +1280,9 @@ export default function Home() {
     },
     btnDanger: {
       padding: "9px 15px",
-      background: "#ffffff",
-      color: "#dc2626",
-      border: "1px solid #fecaca",
+      background: "var(--surface)",
+      color: "var(--danger)",
+      border: "1px solid var(--danger-bg)",
       borderRadius: 8,
       fontWeight: 600,
       fontSize: 13,
@@ -1289,8 +1293,8 @@ export default function Home() {
     },
     btnSuccess: {
       padding: "10px 18px",
-      background: "#16a34a",
-      color: "#ffffff",
+      background: "var(--primary)",
+      color: "var(--on-primary)",
       border: "none",
       borderRadius: 8,
       fontWeight: 600,
@@ -1302,8 +1306,8 @@ export default function Home() {
     },
     btnRecord: {
       padding: "12px 24px",
-      background: "#dc2626",
-      color: "#ffffff",
+      background: "var(--primary)",
+      color: "var(--on-primary)",
       border: "none",
       borderRadius: 8,
       fontWeight: 600,
@@ -1315,8 +1319,8 @@ export default function Home() {
     },
     btnStop: {
       padding: "12px 24px",
-      background: "#09090b",
-      color: "#ffffff",
+      background: "var(--primary)",
+      color: "var(--on-primary)",
       border: "none",
       borderRadius: 8,
       fontWeight: 600,
@@ -1328,18 +1332,18 @@ export default function Home() {
     },
     alertError: {
       padding: "12px 16px",
-      background: "#fef2f2",
-      border: "1px solid #fee2e2",
-      color: "#991b1b",
+      background: "var(--danger-bg)",
+      border: "1px solid var(--danger-bg)",
+      color: "var(--danger)",
       borderRadius: 8,
       marginBottom: 16,
       fontSize: 13
     },
     alertNotice: {
       padding: "12px 16px",
-      background: "#f0fdf4",
-      border: "1px solid #dcfce7",
-      color: "#166534",
+      background: "var(--success-bg)",
+      border: "1px solid var(--success-bg)",
+      color: "var(--success)",
       borderRadius: 8,
       marginBottom: 16,
       fontSize: 13
@@ -1347,12 +1351,13 @@ export default function Home() {
   };
 
   return (
-    <main style={styles.container}>
+    <main className={`app-shell ${role === "admin" ? "admin-shell" : "student-shell"} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {modal}
       {/* Top Application Header */}
-      <header style={styles.header}>
+      <header className="app-header">
         <div>
-          <div style={styles.subtitle}>Đề tài Nghiên cứu Khoa học · LiemWhisper</div>
-          <h1 style={styles.title}>Hệ thống Thu thập Ngữ liệu Giọng nói Kỹ thuật</h1>
+          <a className="brand" href="#main-content">LiemWhisper<span aria-hidden="true">.</span></a>
+          <div className="brand-caption">Đề tài nghiên cứu khoa học</div>
         </div>
 
         {/* User Session Status & Logout when logged in */}
@@ -1375,12 +1380,12 @@ export default function Home() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 6,
-                      background: "#f0fdf4",
-                      color: "#166534",
-                      borderColor: "#bbf7d0"
+                      background: "var(--success-bg)",
+                      color: "var(--success)",
+                      borderColor: "var(--success-bg)"
                     }}
                   >
-                    <MicIcon size={13} color="#166534" />
+                    <MicIcon size={13} color="var(--success)" />
                     <span>Chế độ Thu âm</span>
                   </button>
                 )}
@@ -1405,12 +1410,12 @@ export default function Home() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 6,
-                      background: "#eff6ff",
-                      color: "#1d4ed8",
-                      borderColor: "#bfdbfe"
+                      background: "var(--subtle)",
+                      color: "var(--primary)",
+                      borderColor: "var(--border)"
                     }}
                   >
-                    <ShieldIcon size={13} color="#1d4ed8" />
+                    <ShieldIcon size={13} color="var(--primary)" />
                     <span>Trang Quản trị</span>
                   </button>
                 )}
@@ -1424,14 +1429,14 @@ export default function Home() {
                 gap: 6,
                 padding: "6px 12px",
                 borderRadius: 6,
-                background: role === "admin" ? "#f4f4f5" : "#eff6ff",
-                color: role === "admin" ? "#18181b" : "#1e40af",
-                border: role === "admin" ? "1px solid #e4e4e7" : "1px solid #dbeafe",
+                background: role === "admin" ? "var(--subtle)" : "var(--subtle)",
+                color: role === "admin" ? "var(--text)" : "var(--primary)",
+                border: role === "admin" ? "1px solid var(--border)" : "1px solid var(--subtle)",
                 fontSize: 13,
                 fontWeight: 600
               }}
             >
-              {role === "admin" ? <ShieldIcon size={14} /> : <UserIcon size={14} />}
+              <span className="account-avatar">{(participantInfo?.name || googleUser?.name || (role === "admin" ? "A" : "S")).charAt(0).toUpperCase()}</span>
               <span>{role === "admin" ? (isGoogleAdmin && googleUser?.name ? `Admin: ${googleUser.name}` : "Quản trị viên") : `Sinh viên: ${participantInfo?.participant_code || "Người tham gia"}`}</span>
             </div>
 
@@ -1443,9 +1448,10 @@ export default function Home() {
         )}
       </header>
 
+      <div className="page-intro" id="main-content"><div className="eyebrow">LIEMWHISPER · RESEARCH PLATFORM</div><h1>{role === "admin" ? "Không gian quản trị" : "Hệ thống Thu thập Ngữ liệu Giọng nói Kỹ thuật"}</h1><p>{role === "admin" ? "Quản lý ngữ liệu, theo dõi đóng góp và kết nối nghiên cứu." : "Đóng góp giọng nói của bạn cho nghiên cứu ngôn ngữ và công nghệ."}</p></div>
       {/* Global Alerts */}
       {error && <div style={styles.alertError} role="alert">{error}</div>}
-      {notice && <div style={styles.alertNotice} role="status">{notice}</div>}
+      {notice && <Toast onClose={() => setNotice("")}>{notice}</Toast>}
 
       {/* ========================================================================= */}
       {/* 1. GUEST VIEW: ROLE SELECTION & AUTHENTICATION PORTAL */}
@@ -1453,7 +1459,7 @@ export default function Home() {
       {role === "guest" && (
         <section style={{ maxWidth: 520, margin: "32px auto" }}>
           {/* Role Chooser Tabs */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, background: "#f4f4f5", padding: 4, borderRadius: 8, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, background: "var(--subtle)", padding: 4, borderRadius: 8, marginBottom: 20 }}>
             <button
               onClick={() => { setAuthRoleTab("student"); setError(""); }}
               style={{
@@ -1463,8 +1469,8 @@ export default function Home() {
                 fontWeight: 600,
                 fontSize: 14,
                 cursor: "pointer",
-                background: authRoleTab === "student" ? "#ffffff" : "transparent",
-                color: authRoleTab === "student" ? "#09090b" : "#71717a",
+                background: authRoleTab === "student" ? "var(--surface)" : "transparent",
+                color: authRoleTab === "student" ? "var(--text)" : "var(--muted)",
                 boxShadow: authRoleTab === "student" ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
                 transition: "all 0.15s ease"
               }}
@@ -1480,8 +1486,8 @@ export default function Home() {
                 fontWeight: 600,
                 fontSize: 14,
                 cursor: "pointer",
-                background: authRoleTab === "admin" ? "#ffffff" : "transparent",
-                color: authRoleTab === "admin" ? "#09090b" : "#71717a",
+                background: authRoleTab === "admin" ? "var(--surface)" : "transparent",
+                color: authRoleTab === "admin" ? "var(--text)" : "var(--muted)",
                 boxShadow: authRoleTab === "admin" ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
                 transition: "all 0.15s ease"
               }}
@@ -1496,12 +1502,12 @@ export default function Home() {
               {googleOnboarding && googleUser ? (
                 /* ================= GOOGLE ONBOARDING FORM ================= */
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f4f4f5", paddingBottom: 14, marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--subtle)", paddingBottom: 14, marginBottom: 16 }}>
                     <div>
-                      <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+                      <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>
                         Hoàn tất thông tin đăng ký
                       </h2>
-                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "#71717a" }}>
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>
                         Bổ sung thông tin người tham gia để bắt đầu thu âm
                       </p>
                     </div>
@@ -1510,10 +1516,10 @@ export default function Home() {
                       style={{
                         padding: "5px 10px",
                         borderRadius: 6,
-                        border: "1px solid #e4e4e7",
-                        background: "#ffffff",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
                         fontSize: 12,
-                        color: "#71717a",
+                        color: "var(--muted)",
                         cursor: "pointer"
                       }}
                     >
@@ -1522,31 +1528,31 @@ export default function Home() {
                   </div>
 
                   {/* Google Profile Badge */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--subtle)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
                     {googleUser.picture ? (
                       <img src={googleUser.picture} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />
                     ) : (
-                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#4285F4", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#4285F4", color: "var(--on-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15 }}>
                         {(googleUser.name || googleUser.email)[0].toUpperCase()}
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {googleUser.name || "Tài khoản Google"}
                       </div>
-                      <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {googleUser.email}
                       </div>
                     </div>
-                    <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "3px 8px", borderRadius: 100, fontWeight: 600 }}>
+                    <span style={{ fontSize: 11, background: "var(--success-bg)", color: "var(--success)", padding: "3px 8px", borderRadius: 100, fontWeight: 600 }}>
                       Đã xác thực Google
                     </span>
                   </div>
 
                   {isGoogleAdmin && (
                     <div style={{
-                      background: "#eff6ff",
-                      border: "1px solid #bfdbfe",
+                      background: "var(--subtle)",
+                      border: "1px solid var(--border)",
                       borderRadius: 8,
                       padding: "12px 14px",
                       marginBottom: 16,
@@ -1557,12 +1563,12 @@ export default function Home() {
                       flexWrap: "wrap"
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <ShieldIcon size={18} color="#2563eb" />
+                        <ShieldIcon size={18} color="var(--primary)" />
                         <div>
-                          <div style={{ fontWeight: 600, color: "#1e40af", fontSize: 13 }}>
+                          <div style={{ fontWeight: 600, color: "var(--primary)", fontSize: 13 }}>
                             Tài khoản có quyền Quản trị viên (Admin)
                           </div>
-                          <div style={{ color: "#3b82f6", fontSize: 12 }}>
+                          <div style={{ color: "var(--primary)", fontSize: 12 }}>
                             Bạn có thể truy cập Bảng Quản trị ngay mà không cần hoàn tất khảo sát.
                           </div>
                         </div>
@@ -1585,22 +1591,22 @@ export default function Home() {
                           ...styles.btnPrimary,
                           padding: "6px 14px",
                           fontSize: 12,
-                          background: "#2563eb",
+                          background: "var(--primary)",
                           whiteSpace: "nowrap"
                         }}
                       >
-                        Vào Bảng Quản trị 👉
+                        Vào Bảng Quản trị
                       </button>
                     </div>
                   )}
 
-                  <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
+                  <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
                     Đề tài nghiên cứu LiemWhisper thu thập ngữ liệu phát âm tiếng Việt có chêm xen thuật ngữ CNTT. Dữ liệu được mã hóa ẩn danh phục vụ mục đích học thuật.
                   </p>
 
                   {/* Consent Checkbox */}
-                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: 12, marginBottom: 16 }}>
-                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "#166534", lineHeight: 1.4 }}>
+                  <div style={{ background: "var(--success-bg)", border: "1px solid var(--success-bg)", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13, color: "var(--success)", lineHeight: 1.4 }}>
                       <input
                         type="checkbox"
                         checked={consent}
@@ -1611,8 +1617,8 @@ export default function Home() {
                     </label>
                   </div>
 
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
-                    Trình độ tiếng Anh (CEFR) <span style={{ fontWeight: 400, color: "#52525b" }}>(Bắt buộc):</span>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 14 }}>
+                    Trình độ tiếng Anh (CEFR) <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Bắt buộc):</span>
                     <select name="english_level" required style={styles.field} value={english} onChange={(e) => setEnglish(e.target.value)}>
                       <option value="" disabled>Chọn trình độ tiếng Anh</option>
                       <option value="A1">A1</option>
@@ -1626,8 +1632,8 @@ export default function Home() {
                   </label>
 
                   {/* Mã sinh viên (Không bắt buộc) */}
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
-                    MSSV / Mã sinh viên <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 14 }}>
+                    MSSV / Mã sinh viên <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Không bắt buộc):</span>
                     <input
                       style={styles.field}
                       name="participant_code"
@@ -1638,8 +1644,8 @@ export default function Home() {
                     />
                   </label>
 
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
-                    Lớp <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 14 }}>
+                    Lớp <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Không bắt buộc):</span>
                     <input
                       name="class_name"
                       maxLength={100}
@@ -1650,8 +1656,8 @@ export default function Home() {
                     />
                   </label>
 
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 14 }}>
-                    Giảng viên giới thiệu <span style={{ fontWeight: 400, color: "#71717a" }}>(Không bắt buộc):</span>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 14 }}>
+                    Giảng viên giới thiệu <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Không bắt buộc):</span>
                     <input
                       name="referring_lecturer"
                       maxLength={150}
@@ -1664,7 +1670,7 @@ export default function Home() {
 
                   {/* Giọng vùng miền & Năm sinh */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12, marginBottom: 14 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
                       Giọng vùng miền:
                       <select style={styles.field} value={accentRegion} onChange={(e) => setAccentRegion(e.target.value)}>
                         <option>Miền Bắc</option>
@@ -1673,7 +1679,7 @@ export default function Home() {
                       </select>
                     </label>
 
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
                       Năm sinh:
                       <select style={styles.field} value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
                         <option value={2006}>2006 (18-19 tuổi)</option>
@@ -1689,7 +1695,7 @@ export default function Home() {
 
                   {/* Khóa / Năm học & Microphone */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12, marginBottom: 14 }}>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
                       Khóa / Năm học:
                       <select style={styles.field} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)}>
                         <option>Năm 1</option>
@@ -1700,7 +1706,7 @@ export default function Home() {
                       </select>
                     </label>
 
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
                       Microphone sử dụng:
                       <select style={styles.field} value={mic} onChange={(e) => setMic(e.target.value)}>
                         <option>Điện thoại</option>
@@ -1712,7 +1718,7 @@ export default function Home() {
                   </div>
 
                   {/* Môi trường xung quanh */}
-                  <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a", display: "block", marginBottom: 18 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 18 }}>
                     Môi trường xung quanh:
                     <select style={styles.field} value={environmentNoise} onChange={(e) => { setEnvironmentNoise(e.target.value); setEnvironment(e.target.value); }}>
                       <option>Phòng yên tĩnh</option>
@@ -1733,10 +1739,10 @@ export default function Home() {
                 /* ================= GOOGLE-ONLY PARTICIPANT LOGIN ================= */
                 <div>
                   <div style={{ textAlign: "center", marginBottom: 20 }}>
-                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 6px", color: "#09090b" }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 6px", color: "var(--text)" }}>
                       Đăng nhập tham gia thu âm
                     </h2>
-                    <p style={{ margin: 0, fontSize: 13, color: "#71717a", lineHeight: 1.5 }}>
+                    <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
                       Sử dụng tài khoản Google cá nhân để bắt đầu và tự động lưu giữ tiến độ thu âm của bạn
                     </p>
                   </div>
@@ -1756,12 +1762,12 @@ export default function Home() {
           {/* ADMIN AUTH CARD */}
           {authRoleTab === "admin" && (
             <div style={styles.card}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px", color: "#09090b" }}>Đăng nhập Quản trị viên</h2>
-              <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px", color: "var(--text)" }}>Đăng nhập Quản trị viên</h2>
+              <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
                 Dành cho giảng viên và nhóm nghiên cứu để quản lý danh sách câu hỏi, theo dõi tiến độ và xuất bộ dữ liệu.
               </p>
 
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
                 Khóa quản trị (Admin API Key):
                 <input
                   style={styles.field}
@@ -1794,13 +1800,13 @@ export default function Home() {
           <section style={styles.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Khu vực tài khoản sinh viên
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#09090b", marginTop: 2 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginTop: 2 }}>
                   Mã định danh: {participantInfo?.participant_code || "Học viên"}
                 </div>
-                <div style={{ fontSize: 12, color: "#71717a", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                   Tiến độ được lưu theo tài khoản Google. Đăng nhập lại bằng cùng tài khoản để tiếp tục.
                 </div>
               </div>
@@ -1812,25 +1818,11 @@ export default function Home() {
           <section style={styles.card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   Môn học / Gói câu hỏi:
                 </label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-                  <select
-                    style={{ ...styles.field, marginTop: 0, marginBottom: 0, minWidth: 260 }}
-                    value={selectedCourse}
-                    onChange={(e) => {
-                      const cid = e.target.value;
-                      setSelectedCourse(cid);
-                      if (token && cid) loadTasks(cid, token);
-                    }}
-                  >
-                    {courses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.title} ({c.prompt_count || 0} câu)
-                      </option>
-                    ))}
-                  </select>
+                  <Select label="Môn học / Gói câu hỏi" value={selectedCourse} options={courses.map(c => ({ value: c.id, label: c.title + ' (' + (c.prompt_count || 0) + ' câu)' }))} onChange={cid => { setSelectedCourse(cid); if (token && cid) loadTasks(cid, token); }} />
                   <button
                     style={styles.btnSecondary}
                     onClick={async () => {
@@ -1851,12 +1843,10 @@ export default function Home() {
 
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, color: "#52525b" }}>
-                    Tiến độ: <strong style={{ color: "#09090b" }}>{completedCount} / {tasks.length}</strong> câu ({progressPercent}%)
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                    Tiến độ: <strong style={{ color: "var(--text)" }}>{completedCount} / {tasks.length}</strong> câu ({progressPercent}%)
                   </div>
-                  <div style={{ width: 160, height: 6, background: "#e4e4e7", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
-                    <div style={{ width: `${progressPercent}%`, height: "100%", background: "#16a34a", transition: "width 0.3s ease" }} />
-                  </div>
+                  <Progress value={progressPercent} label="Tiến độ thu âm" />
                 </div>
 
                 {isParticipantCompleted ? (
@@ -1868,14 +1858,14 @@ export default function Home() {
                         gap: 6,
                         padding: "8px 14px",
                         borderRadius: 8,
-                        background: "#dcfce7",
-                        color: "#166534",
+                        background: "var(--success-bg)",
+                        color: "var(--success)",
                         fontSize: 13,
                         fontWeight: 700,
-                        border: "1px solid #86efac"
+                        border: "1px solid var(--success-bg)"
                       }}
                     >
-                      <CheckIcon size={14} color="#166534" />
+                      <CheckIcon size={14} color="var(--success)" />
                       <span>Đã hoàn thành bài thu âm</span>
                     </div>
                   ) : (
@@ -1887,8 +1877,8 @@ export default function Home() {
                         padding: "8px 14px",
                         borderRadius: 8,
                         border: "none",
-                        background: "#16a34a",
-                        color: "#ffffff",
+                        background: "var(--success)",
+                        color: "var(--on-primary)",
                         fontSize: 13,
                         fontWeight: 600,
                         cursor: "pointer",
@@ -1898,7 +1888,7 @@ export default function Home() {
                       onClick={() => setIsCompletedSession(true)}
                       title="Xem lại thư cảm ơn và xác nhận hoàn thành"
                     >
-                      <CheckIcon size={14} color="#ffffff" />
+                      <CheckIcon size={14} color="var(--surface)" />
                       <span>Xem thư cảm ơn / Kết quả</span>
                     </button>
                   )
@@ -1912,8 +1902,8 @@ export default function Home() {
                         padding: "8px 14px",
                         borderRadius: 8,
                         border: "none",
-                        background: completedCount === tasks.length ? "#16a34a" : "#0f172a",
-                        color: "#ffffff",
+                        background: completedCount === tasks.length ? "var(--success)" : "var(--text)",
+                        color: "var(--on-primary)",
                         fontSize: 13,
                         fontWeight: 600,
                         cursor: "pointer",
@@ -1924,7 +1914,7 @@ export default function Home() {
                       onClick={handleCompleteSession}
                       title="Nộp và kết thúc bài thu âm để nhận thư cảm ơn"
                     >
-                      <CheckIcon size={14} color="#ffffff" />
+                      <CheckIcon size={14} color="var(--surface)" />
                       <span>Hoàn thành bài thu âm</span>
                     </button>
                   )
@@ -1934,37 +1924,37 @@ export default function Home() {
           </section>
 
           {isCompletedSession ? (
-            <section style={{ ...styles.card, padding: "44px 24px", textAlign: "center", border: "1.5px solid #86efac", background: "#f0fdf4", boxShadow: "0 4px 14px rgba(22, 163, 74, 0.08)" }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#16a34a", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-                <CheckIcon size={32} color="#ffffff" />
+            <section className="completion-card" style={{ ...styles.card, padding: "44px 24px", textAlign: "center", border: "1.5px solid var(--success-bg)", background: "var(--success-bg)", boxShadow: "0 4px 14px rgba(22, 163, 74, 0.08)" }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--success)", color: "var(--on-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <CheckIcon size={32} color="var(--surface)" />
               </div>
-              <h2 style={{ fontSize: 24, fontWeight: 800, color: "#14532d", margin: "0 0 10px" }}>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: "var(--success)", margin: "0 0 10px" }}>
                 Chúc mừng bạn đã hoàn thành bài thi!
               </h2>
-              <p style={{ fontSize: 15, color: "#166534", maxWidth: 540, margin: "0 auto 24px", lineHeight: 1.6 }}>
+              <p style={{ fontSize: 15, color: "var(--success)", maxWidth: 540, margin: "0 auto 24px", lineHeight: 1.6 }}>
                 Thay mặt nhóm nghiên cứu đề tài <strong>LiemWhisper</strong>, xin chân thành cảm ơn bạn đã dành thời gian đóng góp giọng nói quý báu cho bộ ngữ liệu khoa học.
               </p>
 
-              <div style={{ maxWidth: 460, margin: "0 auto 24px", background: "#ffffff", borderRadius: 10, padding: 20, border: "1px solid #dcfce7", textAlign: "left", boxShadow: "0 2px 4px rgba(0,0,0,0.03)" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#14532d", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div style={{ maxWidth: 460, margin: "0 auto 24px", background: "var(--surface)", borderRadius: 10, padding: 20, border: "1px solid var(--success-bg)", textAlign: "left", boxShadow: "0 2px 4px rgba(0,0,0,0.03)" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--success)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Thông tin xác nhận đóng góp
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f0fdf4", fontSize: 13 }}>
-                  <span style={{ color: "#64748b" }}>Mã sinh viên / Participant:</span>
-                  <strong style={{ color: "#0f172a" }}>{participantInfo?.participant_code || "N/A"}</strong>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--success-bg)", fontSize: 13 }}>
+                  <span style={{ color: "var(--muted)" }}>Mã sinh viên / Participant:</span>
+                  <strong style={{ color: "var(--text)" }}>{participantInfo?.participant_code || "N/A"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f0fdf4", fontSize: 13 }}>
-                  <span style={{ color: "#64748b" }}>Số câu đã hoàn thành:</span>
-                  <strong style={{ color: "#16a34a" }}>{completionDetails?.total ?? completedCount} / {tasks.length} câu</strong>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid var(--success-bg)", fontSize: 13 }}>
+                  <span style={{ color: "var(--muted)" }}>Số câu đã hoàn thành:</span>
+                  <strong style={{ color: "var(--success)" }}>{completionDetails?.total ?? completedCount} / {tasks.length} câu</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: 13 }}>
-                  <span style={{ color: "#64748b" }}>Email nhận thư cảm ơn:</span>
-                  <strong style={{ color: "#0f172a" }}>{completionDetails?.email || participantInfo?.email || participantInfo?.survey?.email || "Email Google của bạn"}</strong>
+                  <span style={{ color: "var(--muted)" }}>Email nhận thư cảm ơn:</span>
+                  <strong style={{ color: "var(--text)" }}>{completionDetails?.email || participantInfo?.email || participantInfo?.survey?.email || "Email Google của bạn"}</strong>
                 </div>
               </div>
 
-              <div style={{ background: "#dcfce7", color: "#14532d", padding: "12px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, maxWidth: 500, margin: "0 auto 28px" }}>
-                ✉️ Thư cảm ơn chính thức đã được gửi đến hộp thư Gmail của bạn. Vui lòng kiểm tra hộp thư đến (hoặc hòm thư Spam/Promotions nếu chưa thấy).
+              <div style={{ background: "var(--success-bg)", color: "var(--success)", padding: "12px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, maxWidth: 500, margin: "0 auto 28px" }}>
+                <svg className="mail-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg> Thư cảm ơn chính thức đã được gửi đến hộp thư Gmail của bạn. Vui lòng kiểm tra hộp thư đến (hoặc hòm thư Spam/Promotions nếu chưa thấy).
               </div>
 
               <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1976,7 +1966,7 @@ export default function Home() {
                   <span>Xem lại các câu đã thu âm</span>
                 </button>
                 <button
-                  style={{ ...styles.btnSecondary, color: "#b91c1c", borderColor: "#fca5a5" }}
+                  style={{ ...styles.btnSecondary, color: "var(--danger)", borderColor: "var(--danger-bg)" }}
                   onClick={handleLogout}
                 >
                   <LogoutIcon size={14} />
@@ -1989,27 +1979,27 @@ export default function Home() {
               {/* FOCUS RECORDING CARD */}
               {tasks.length === 0 ? (
             <div style={{ ...styles.card, textAlign: "center", padding: "40px 20px" }}>
-              <p style={{ color: "#71717a", fontSize: 14 }}>Chưa có câu hỏi nào trong chủ đề này.</p>
+              <p style={{ color: "var(--muted)", fontSize: 14 }}>Chưa có câu hỏi nào trong chủ đề này.</p>
             </div>
           ) : currentTask ? (
-            <section style={{ ...styles.card, border: "1px solid #d4d4d8", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <section style={{ ...styles.card, border: "1px solid var(--border)", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
               {/* Header: Question Index & Status */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f4f4f5", paddingBottom: 14, marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--subtle)", paddingBottom: 14, marginBottom: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: "#09090b" }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
                     Câu {currentIndex + 1} trên {tasks.length}
                   </span>
                   {currentTask.recording_id ? (
-                    <span style={{ fontSize: 12, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                    <span style={{ fontSize: 12, background: "var(--success-bg)", color: "var(--success)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
                       Đã ghi âm
                     </span>
                   ) : (
-                    <span style={{ fontSize: 12, background: "#f4f4f5", color: "#71717a", padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>
+                    <span style={{ fontSize: 12, background: "var(--subtle)", color: "var(--muted)", padding: "2px 8px", borderRadius: 4, fontWeight: 500 }}>
                       Chưa ghi âm
                     </span>
                   )}
                   {isParticipantCompleted && (
-                    <span style={{ fontSize: 12, background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: 4, fontWeight: 600, border: "1px solid #bfdbfe" }}>
+                    <span style={{ fontSize: 12, background: "var(--subtle)", color: "var(--primary)", padding: "2px 8px", borderRadius: 4, fontWeight: 600, border: "1px solid var(--border)" }}>
                       🔒 Chế độ xem lại
                     </span>
                   )}
@@ -2060,8 +2050,8 @@ export default function Home() {
               {isParticipantCompleted && (
                 <div
                   style={{
-                    background: "#f0fdf4",
-                    border: "1px solid #bbf7d0",
+                    background: "var(--success-bg)",
+                    border: "1px solid var(--success-bg)",
                     borderRadius: 8,
                     padding: "10px 14px",
                     marginBottom: 16,
@@ -2071,11 +2061,11 @@ export default function Home() {
                     flexWrap: "wrap",
                     gap: 10,
                     fontSize: 13,
-                    color: "#166534"
+                    color: "var(--success)"
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <CheckIcon size={16} color="#16a34a" />
+                    <CheckIcon size={16} color="var(--success)" />
                     <span>
                       <strong>Bài thi đã hoàn thành:</strong> Bạn đang ở chế độ xem lại. Bạn có thể nghe lại các bản thu âm nhưng không thể ghi âm thêm hoặc nộp lại bài.
                     </span>
@@ -2083,8 +2073,8 @@ export default function Home() {
                   <button
                     type="button"
                     style={{
-                      background: "#16a34a",
-                      color: "#ffffff",
+                      background: "var(--success)",
+                      color: "var(--on-primary)",
                       border: "none",
                       borderRadius: 6,
                       padding: "5px 12px",
@@ -2123,8 +2113,8 @@ export default function Home() {
                     {questionPart && (
                       <div
                         style={{
-                          background: "#f8fafc",
-                          border: "1px solid #e2e8f0",
+                          background: "var(--subtle)",
+                          border: "1px solid var(--border)",
                           borderRadius: 8,
                           padding: "14px 18px",
                           marginBottom: 14,
@@ -2135,7 +2125,7 @@ export default function Home() {
                           style={{
                             fontSize: 11,
                             fontWeight: 700,
-                            color: "#475569",
+                            color: "var(--muted)",
                             textTransform: "uppercase",
                             letterSpacing: "0.05em",
                             marginBottom: 6,
@@ -2144,16 +2134,16 @@ export default function Home() {
                             gap: 8
                           }}
                         >
-                          <span style={{ background: "#e2e8f0", color: "#334155", padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>
+                          <span style={{ background: "var(--border)", color: "var(--text)", padding: "2px 8px", borderRadius: 4, fontWeight: 700 }}>
                             CÂU HỎI
                           </span>
                           {currentTask.category && (
-                            <span style={{ color: "#64748b", fontWeight: 500, fontSize: 11 }}>
+                            <span style={{ color: "var(--muted)", fontWeight: 500, fontSize: 11 }}>
                               Chủ đề: {currentTask.category}
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", lineHeight: 1.5 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", lineHeight: 1.5 }}>
                           {questionPart}
                         </div>
                       </div>
@@ -2161,10 +2151,10 @@ export default function Home() {
 
                     <div
                       style={{
-                        background: "#ffffff",
+                        background: "var(--surface)",
                         padding: "24px 20px",
                         borderRadius: 8,
-                        border: "1px solid #e4e4e7",
+                        border: "1px solid var(--border)",
                         textAlign: "center",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
                       }}
@@ -2173,7 +2163,7 @@ export default function Home() {
                         style={{
                           fontSize: 11,
                           fontWeight: 700,
-                          color: "#166534",
+                          color: "var(--success)",
                           textTransform: "uppercase",
                           letterSpacing: "0.05em",
                           marginBottom: 10
@@ -2181,10 +2171,10 @@ export default function Home() {
                       >
                         🎙️ Văn bản đọc thu âm (Câu trả lời)
                       </div>
-                      <p style={{ fontSize: 20, fontWeight: 600, color: "#09090b", lineHeight: 1.7, margin: "8px 0 12px" }}>
+                      <p style={{ fontSize: 20, fontWeight: 600, color: "var(--text)", lineHeight: 1.7, margin: "8px 0 12px" }}>
                         {renderHighlightedText(readingPart, currentTask.target_terms)}
                       </p>
-                      <p style={{ fontSize: 13, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                      <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
                         Hướng dẫn: Đọc to, rõ ràng theo tốc độ tự nhiên. Phát âm thuật ngữ tiếng Anh theo thói quen giao tiếp kỹ thuật của bạn.
                       </p>
                     </div>
@@ -2198,12 +2188,12 @@ export default function Home() {
                   ref={canvasRef}
                   width={280}
                   height={44}
-                  style={{ background: "#f4f4f5", borderRadius: 6, marginBottom: 10, display: isRecording ? "block" : "none" }}
+                  style={{ background: "var(--subtle)", borderRadius: 6, marginBottom: 10, display: isRecording ? "block" : "none" }}
                 />
 
                 {isRecording && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#dc2626", fontWeight: 700, fontSize: 16, fontFamily: "ui-monospace, monospace" }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#dc2626" }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--danger)", fontWeight: 700, fontSize: 16, fontFamily: "ui-monospace, monospace" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--danger)" }} />
                     {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:
                     {(recordingSeconds % 60).toString().padStart(2, "0")} / 00:45
                   </div>
@@ -2215,11 +2205,11 @@ export default function Home() {
                 {isParticipantCompleted ? (
                   currentTask.recording_id ? (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
-                        <CheckIcon size={14} color="#166534" />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--success)", display: "flex", alignItems: "center", gap: 6 }}>
+                        <CheckIcon size={14} color="var(--success)" />
                         <span>Bản ghi âm đã nộp của câu này</span>
                         {currentTask.duration_seconds ? (
-                          <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
+                          <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 400 }}>
                             ({currentTask.duration_seconds.toFixed(1)}s)
                           </span>
                         ) : null}
@@ -2232,7 +2222,7 @@ export default function Home() {
                       />
                     </div>
                   ) : (
-                    <div style={{ padding: "16px 20px", background: "#f8fafc", borderRadius: 8, border: "1px dashed #cbd5e1", color: "#64748b", fontSize: 13, textAlign: "center" }}>
+                    <div style={{ padding: "16px 20px", background: "var(--subtle)", borderRadius: 8, border: "1px dashed var(--border)", color: "var(--muted)", fontSize: 13, textAlign: "center" }}>
                       Câu này chưa có bản ghi âm (bạn đã hoàn thành bài thi).
                     </div>
                   )
@@ -2240,11 +2230,11 @@ export default function Home() {
                   <>
                     {!isRecording && !audioUrl && currentTask.recording_id && (
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
-                          <CheckIcon size={14} color="#166534" />
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--success)", display: "flex", alignItems: "center", gap: 6 }}>
+                          <CheckIcon size={14} color="var(--success)" />
                           <span>Bản ghi âm đã lưu cho câu này</span>
                           {currentTask.duration_seconds ? (
-                            <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
+                            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 400 }}>
                               ({currentTask.duration_seconds.toFixed(1)}s)
                             </span>
                           ) : null}
@@ -2268,6 +2258,7 @@ export default function Home() {
 
                     {!isRecording && !audioUrl && !currentTask.recording_id && (
                       <button
+                        className="record-button"
                         style={styles.btnRecord}
                         disabled={busy}
                         onClick={() => startRecording(currentTask.id)}
@@ -2280,15 +2271,15 @@ export default function Home() {
                 )}
 
                 {isRecording && (
-                  <button style={styles.btnStop} onClick={stopRecording}>
-                    <StopIcon size={14} color="#ffffff" />
+                  <button className="record-button is-recording" style={styles.btnStop} onClick={stopRecording}>
+                    <StopIcon size={14} color="var(--surface)" />
                     <span>Dừng ghi âm</span>
                   </button>
                 )}
 
                 {audioUrl && !isRecording && (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: "100%", maxWidth: 420 }}>
-                    <div style={{ fontSize: 13, color: "#09090b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                       <span>Nghe lại bản thu thử ({recordedDuration.toFixed(1)}s):</span>
                     </div>
                     <audio
@@ -2327,13 +2318,13 @@ export default function Home() {
               </div>
 
               {/* QUESTION PAGINATION STRIP */}
-              <div style={{ marginTop: 28, borderTop: "1px solid #f4f4f5", paddingTop: 16 }}>
+              <div style={{ marginTop: 28, borderTop: "1px solid var(--subtle)", paddingTop: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>
                     Danh sách câu:
                   </div>
                   {!isParticipantCompleted && (
-                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
                       * Cần thu âm xong câu hiện tại để mở câu tiếp theo
                     </div>
                   )}
@@ -2362,9 +2353,9 @@ export default function Home() {
                           width: 30,
                           height: 30,
                           borderRadius: 6,
-                          border: isCurrent ? "1.5px solid #09090b" : "1px solid #e4e4e7",
-                          background: isRecorded ? "#16a34a" : isCurrent ? "#f4f4f5" : "#ffffff",
-                          color: isRecorded ? "#ffffff" : isCurrent ? "#09090b" : "#52525b",
+                          border: isCurrent ? "1.5px solid var(--text)" : "1px solid var(--border)",
+                          background: isRecorded ? "var(--success)" : isCurrent ? "var(--subtle)" : "var(--surface)",
+                          color: isRecorded ? "var(--surface)" : isCurrent ? "var(--text)" : "var(--muted)",
                           fontWeight: 600,
                           fontSize: 12,
                           cursor: canJump && !isRecording ? "pointer" : "not-allowed",
@@ -2382,14 +2373,14 @@ export default function Home() {
 
               {/* PROMPT WHEN ALL COMPLETED */}
               {tasks.length > 0 && completedCount === tasks.length && (
-                <div style={{ ...styles.card, background: "#f0fdf4", border: "1.5px solid #86efac", textAlign: "center", padding: "32px 20px", marginTop: 20 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#16a34a", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-                    <CheckIcon size={24} color="#ffffff" />
+                <div style={{ ...styles.card, background: "var(--success-bg)", border: "1.5px solid var(--success-bg)", textAlign: "center", padding: "32px 20px", marginTop: 20 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--success)", color: "var(--on-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <CheckIcon size={24} color="var(--surface)" />
                   </div>
-                  <h3 style={{ color: "#14532d", fontSize: 18, margin: "0 0 8px", fontWeight: 700 }}>
+                  <h3 style={{ color: "var(--success)", fontSize: 18, margin: "0 0 8px", fontWeight: 700 }}>
                     Bạn đã hoàn thành đủ {tasks.length} / {tasks.length} câu hỏi!
                   </h3>
-                  <p style={{ color: "#166534", fontSize: 14, margin: "0 auto 18px", maxWidth: 500, lineHeight: 1.5 }}>
+                  <p style={{ color: "var(--success)", fontSize: 14, margin: "0 auto 18px", maxWidth: 500, lineHeight: 1.5 }}>
                     Bấm nút bên dưới để kết thúc bài thi. Hệ thống sẽ chính thức ghi nhận và tự động gửi email cảm ơn đến bạn.
                   </p>
                   <button
@@ -2397,8 +2388,8 @@ export default function Home() {
                       padding: "11px 26px",
                       borderRadius: 8,
                       border: "none",
-                      background: "#16a34a",
-                      color: "#ffffff",
+                      background: "var(--success)",
+                      color: "var(--on-primary)",
                       fontSize: 14,
                       fontWeight: 700,
                       cursor: "pointer",
@@ -2410,7 +2401,7 @@ export default function Home() {
                     disabled={busy}
                     onClick={handleCompleteSession}
                   >
-                    <CheckIcon size={16} color="#ffffff" />
+                    <CheckIcon size={16} color="var(--surface)" />
                     <span>Hoàn thành bài thi & Nhận email cảm ơn</span>
                   </button>
                 </div>
@@ -2422,7 +2413,7 @@ export default function Home() {
           <div style={{ textAlign: "center", marginTop: 16 }}>
             <button
               onClick={handleWithdraw}
-              style={{ background: "none", border: "none", color: "#71717a", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}
+              style={{ background: "none", border: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}
             >
               Rút lại sự đồng ý và xóa các bản ghi âm của tôi
             </button>
@@ -2444,10 +2435,11 @@ export default function Home() {
           />
 
           {/* Admin Navigation Bar */}
-          <section style={styles.card}>
+          <section className="admin-navigation" aria-label="Điều hướng quản trị">
+            <Button className="sidebar-toggle" aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>{sidebarCollapsed ? "Mở menu" : "Thu gọn menu"}</Button>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-              <div style={{ display: "flex", gap: 4, background: "#f4f4f5", padding: 3, borderRadius: 8, flexWrap: "wrap" }}>
-                <button
+              <div style={{ display: "flex", gap: 4, background: "var(--subtle)", padding: 3, borderRadius: 8, flexWrap: "wrap" }}>
+                <button aria-current={adminSubTab === "stats" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2455,15 +2447,15 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "stats" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "stats" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "stats" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "stats" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "stats" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => { setAdminSubTab("stats"); loadAdminStats(); }}
                 >
                   Thống kê
                 </button>
-                <button
+                <button aria-current={adminSubTab === "participants" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2471,15 +2463,15 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "participants" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "participants" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "participants" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "participants" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "participants" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => setAdminSubTab("participants")}
                 >
                   DS Người dùng & Audio
                 </button>
-                <button
+                <button aria-current={adminSubTab === "questions" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2487,15 +2479,15 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "questions" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "questions" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "questions" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "questions" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "questions" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => { setAdminSubTab("questions"); loadAdminCourses(); }}
                 >
                   DS Câu hỏi & Audio
                 </button>
-                <button
+                <button aria-current={adminSubTab === "prompts" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2503,15 +2495,15 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "prompts" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "prompts" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "prompts" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "prompts" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "prompts" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => { setAdminSubTab("prompts"); loadAdminCourses(); }}
                 >
                   Tạo & Nhập câu hỏi
                 </button>
-                <button
+                <button aria-current={adminSubTab === "admins" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2519,15 +2511,15 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "admins" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "admins" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "admins" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "admins" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "admins" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => { setAdminSubTab("admins"); loadAdminAdmins(); loadAdminParticipants(); }}
                 >
                   Cấp quyền Admin (Gmail)
                 </button>
-                <button
+                <button aria-current={adminSubTab === "export" ? "page" : undefined}
                   style={{
                     padding: "7px 14px",
                     borderRadius: 6,
@@ -2535,8 +2527,8 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
-                    background: adminSubTab === "export" ? "#ffffff" : "transparent",
-                    color: adminSubTab === "export" ? "#09090b" : "#71717a",
+                    background: adminSubTab === "export" ? "var(--surface)" : "transparent",
+                    color: adminSubTab === "export" ? "var(--text)" : "var(--muted)",
                     boxShadow: adminSubTab === "export" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => setAdminSubTab("export")}
@@ -2561,6 +2553,7 @@ export default function Home() {
             </div>
           </section>
 
+          {adminSubTab === "stats" && !stats && <Skeleton />}
           {/* SUBTAB 1: STATS */}
           {adminSubTab === "stats" && stats && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -2575,42 +2568,42 @@ export default function Home() {
               <section style={styles.card}>
                 <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Tổng quan tiến độ thu thập</h2>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>Môn học</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_courses}</div>
+                  <div style={{ background: "var(--subtle)", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>Môn học</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>{stats.total_courses}</div>
                   </div>
-                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>Câu hỏi xuất bản</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.published_prompts}</div>
+                  <div style={{ background: "var(--subtle)", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>Câu hỏi xuất bản</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>{stats.published_prompts}</div>
                   </div>
-                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>Người tham gia</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_participants}</div>
+                  <div style={{ background: "var(--subtle)", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>Người tham gia</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>{stats.total_participants}</div>
                   </div>
-                  <div style={{ background: "#f5f3ff", padding: 14, borderRadius: 8, border: "1px solid #ddd6fe" }}>
-                    <div style={{ fontSize: 12, color: "#6b21a8" }}>Quản trị viên (Gmail)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", marginTop: 4 }}>{adminUsersList.length || 1}</div>
+                  <div style={{ background: "var(--subtle)", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, color: "var(--primary)" }}>Quản trị viên (Gmail)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{adminUsersList.length || 1}</div>
                   </div>
-                  <div style={{ background: "#f0fdf4", padding: 14, borderRadius: 8, border: "1px solid #bbf7d0" }}>
-                    <div style={{ fontSize: 12, color: "#166534" }}>Tổng bản ghi thu âm</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#15803d", marginTop: 4 }}>{stats.total_recordings}</div>
+                  <div style={{ background: "var(--success-bg)", padding: 14, borderRadius: 8, border: "1px solid var(--success-bg)" }}>
+                    <div style={{ fontSize: 12, color: "var(--success)" }}>Tổng bản ghi thu âm</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--success)", marginTop: 4 }}>{stats.total_recordings}</div>
                   </div>
-                  <div style={{ background: "#fefce8", padding: 14, borderRadius: 8, border: "1px solid #fef08a" }}>
-                    <div style={{ fontSize: 12, color: "#854d0e" }}>Tổng thời lượng (phút)</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: "#a16207", marginTop: 4 }}>{stats.total_duration_minutes}m</div>
+                  <div style={{ background: "var(--subtle)", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 12, color: "var(--primary)" }}>Tổng thời lượng (phút)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{stats.total_duration_minutes}m</div>
                   </div>
                 </div>
 
-                <h3 style={{ fontSize: 14, fontWeight: 600, color: "#27272a", marginBottom: 12 }}>Tiến độ từng môn học:</h3>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>Tiến độ từng môn học:</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {stats.courses.map((c) => (
-                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", padding: 12, background: "#f8fafc", borderRadius: 6, border: "1px solid #f1f5f9", alignItems: "center" }}>
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", padding: 12, background: "var(--subtle)", borderRadius: 6, border: "1px solid var(--subtle)", alignItems: "center" }}>
                       <div>
-                        <strong style={{ fontSize: 14, color: "#09090b" }}>{c.title}</strong>
-                        <span style={{ fontSize: 12, color: "#71717a", marginLeft: 8 }}>({c.prompts_count} câu)</span>
+                        <strong style={{ fontSize: 14, color: "var(--text)" }}>{c.title}</strong>
+                        <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>({c.prompts_count} câu)</span>
                       </div>
                       <div style={{ fontSize: 13 }}>
-                        <span style={{ color: "#16a34a", fontWeight: 600 }}>{c.recordings_count} bản ghi đã nộp</span>
+                        <span style={{ color: "var(--success)", fontWeight: 600 }}>{c.recordings_count} bản ghi đã nộp</span>
                       </div>
                     </div>
                   ))}
@@ -2670,7 +2663,7 @@ export default function Home() {
               {/* Bulk Import Prompts */}
               <section style={styles.card}>
                 <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>2. Nhập câu hỏi hàng loạt (Bulk Import)</h2>
-                <p style={{ color: "#52525b", fontSize: 13, margin: "0 0 14px" }}>
+                <p style={{ color: "var(--muted)", fontSize: 13, margin: "0 0 14px" }}>
                   Dán danh sách các câu tiếng Việt có chêm thuật ngữ kỹ thuật tiếng Anh (mỗi dòng một câu). Hệ thống tự động bóc tách các từ khóa kỹ thuật.
                 </p>
 
@@ -2700,7 +2693,7 @@ export default function Home() {
                 </label>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: "#27272a" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: "var(--text)" }}>
                     <input
                       type="checkbox"
                       checked={bulkPublish}
@@ -2722,10 +2715,10 @@ export default function Home() {
               {/* Card 1: Add new admin by Gmail */}
               <section style={styles.card}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <ShieldIcon size={18} color="#2563eb" />
+                  <ShieldIcon size={18} color="var(--primary)" />
                   <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Cấp quyền Quản trị viên mới qua Google / Gmail</h2>
                 </div>
-                <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
+                <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, margin: "0 0 16px" }}>
                   Người dùng sở hữu địa chỉ Gmail dưới đây sẽ được cấp quyền Quản trị viên (Admin). Khi đăng nhập bằng tài khoản Google tại trang chủ, hệ thống sẽ tự động nhận diện và chuyển sang bảng quản trị.
                 </p>
 
@@ -2770,7 +2763,7 @@ export default function Home() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
                   <div>
                     <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Danh sách Quản trị viên hiện tại</h2>
-                    <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                       Tổng cộng {adminUsersList.length} tài khoản có quyền quản trị hệ thống
                     </div>
                   </div>
@@ -2796,18 +2789,18 @@ export default function Home() {
                 </div>
 
                 {loadingAdmins && adminUsersList.length === 0 ? (
-                  <div style={{ padding: "24px 0", textAlign: "center", color: "#71717a", fontSize: 13 }}>
+                  <div style={{ padding: "24px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
                     Đang tải danh sách quản trị viên...
                   </div>
                 ) : adminUsersList.length === 0 ? (
-                  <div style={{ padding: "24px 0", textAlign: "center", color: "#71717a", fontSize: 13, background: "#f8fafc", borderRadius: 8 }}>
+                  <div style={{ padding: "24px 0", textAlign: "center", color: "var(--muted)", fontSize: 13, background: "var(--subtle)", borderRadius: 8 }}>
                     Chưa có quản trị viên nào được cấp qua Gmail. Hãy nhập Gmail ở trên để cấp quyền quản trị đầu tiên.
                   </div>
                 ) : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
-                        <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#475569" }}>
+                        <tr style={{ background: "var(--subtle)", borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--muted)" }}>
                           <th style={{ padding: "10px 14px", fontWeight: 600 }}>Tài khoản Gmail</th>
                           <th style={{ padding: "10px 14px", fontWeight: 600 }}>Tên hiển thị / Liên kết</th>
                           <th style={{ padding: "10px 14px", fontWeight: 600 }}>Nguồn cấp</th>
@@ -2817,15 +2810,15 @@ export default function Home() {
                       </thead>
                       <tbody>
                         {adminUsersList.map((a) => (
-                          <tr key={a.email} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <tr key={a.email} style={{ borderBottom: "1px solid var(--subtle)" }}>
                             <td style={{ padding: "12px 14px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{
                                   width: 28,
                                   height: 28,
                                   borderRadius: "50%",
-                                  background: "#eff6ff",
-                                  color: "#2563eb",
+                                  background: "var(--subtle)",
+                                  color: "var(--primary)",
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -2835,38 +2828,38 @@ export default function Home() {
                                   G
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight: 600, color: "#09090b" }}>{a.email}</div>
-                                  <div style={{ display: "inline-block", background: "#dbeafe", color: "#1e40af", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                                  <div style={{ fontWeight: 600, color: "var(--text)" }}>{a.email}</div>
+                                  <div style={{ display: "inline-block", background: "var(--subtle)", color: "var(--primary)", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600, marginTop: 2 }}>
                                     Admin
                                   </div>
                                 </div>
                               </div>
                             </td>
-                            <td style={{ padding: "12px 14px", color: a.linked ? "#09090b" : "#94a3b8" }}>
+                            <td style={{ padding: "12px 14px", color: a.linked ? "var(--text)" : "var(--muted)" }}>
                               {a.linked ? (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#15803d", fontWeight: 500 }}>
-                                  <CheckIcon size={13} color="#15803d" />
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--success)", fontWeight: 500 }}>
+                                  <CheckIcon size={13} color="var(--success)" />
                                   <span>{a.name || "Đã liên kết Google"}</span>
                                 </span>
                               ) : (
                                 <span>Chờ đăng nhập lần đầu</span>
                               )}
                             </td>
-                            <td style={{ padding: "12px 14px", color: "#64748b" }}>
+                            <td style={{ padding: "12px 14px", color: "var(--muted)" }}>
                               {a.is_env ? (
-                                <span style={{ background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                                <span style={{ background: "var(--subtle)", color: "var(--warning)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
                                   Biến môi trường
                                 </span>
                               ) : (
                                 <span>{a.created_by || "Admin"}</span>
                               )}
                             </td>
-                            <td style={{ padding: "12px 14px", color: "#64748b" }}>
+                            <td style={{ padding: "12px 14px", color: "var(--muted)" }}>
                               {a.created_at ? new Date(a.created_at * 1000).toLocaleString("vi-VN") : "Cấu hình cố định"}
                             </td>
                             <td style={{ padding: "12px 14px", textAlign: "right" }}>
                               {a.is_env ? (
-                                <span style={{ fontSize: 11, color: "#94a3b8" }} title="Quản trị viên cấu hình trong ADMIN_EMAILS không thể xóa qua giao diện">
+                                <span style={{ fontSize: 11, color: "var(--muted)" }} title="Quản trị viên cấu hình trong ADMIN_EMAILS không thể xóa qua giao diện">
                                   Cố định
                                 </span>
                               ) : (
@@ -2878,9 +2871,9 @@ export default function Home() {
                                     ...styles.btnSecondary,
                                     padding: "4px 10px",
                                     fontSize: 12,
-                                    color: "#dc2626",
-                                    borderColor: "#fca5a5",
-                                    background: "#fff"
+                                    color: "var(--danger)",
+                                    borderColor: "var(--danger-bg)",
+                                    background: "var(--surface)"
                                   }}
                                   title="Thu hồi quyền quản trị viên của email này"
                                 >
@@ -2901,7 +2894,7 @@ export default function Home() {
                 <section style={styles.card}>
                   <div style={{ marginBottom: 12 }}>
                     <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Gợi ý cấp Admin từ người tham gia Google gần đây</h2>
-                    <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                       Nhấn "Cấp quyền" để nâng cấp tài khoản của người tham gia lên Quản trị viên
                     </div>
                   </div>
@@ -2917,8 +2910,8 @@ export default function Home() {
                             style={{
                               padding: "10px 12px",
                               borderRadius: 6,
-                              border: "1px solid #e2e8f0",
-                              background: alreadyAdmin ? "#f8fafc" : "#ffffff",
+                              border: "1px solid var(--border)",
+                              background: alreadyAdmin ? "var(--subtle)" : "var(--surface)",
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center",
@@ -2926,15 +2919,15 @@ export default function Home() {
                             }}
                           >
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ fontWeight: 600, fontSize: 13, color: "#09090b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {p.name || p.participant_code}
                               </div>
-                              <div style={{ fontSize: 12, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <div style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {p.email}
                               </div>
                             </div>
                             {alreadyAdmin ? (
-                              <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                              <span style={{ fontSize: 11, background: "var(--success-bg)", color: "var(--success)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
                                 Đã là Admin
                               </span>
                             ) : (
@@ -2946,9 +2939,9 @@ export default function Home() {
                                   ...styles.btnSecondary,
                                   padding: "4px 8px",
                                   fontSize: 12,
-                                  color: "#2563eb",
-                                  borderColor: "#93c5fd",
-                                  background: "#eff6ff",
+                                  color: "var(--primary)",
+                                  borderColor: "var(--border)",
+                                  background: "var(--subtle)",
                                   whiteSpace: "nowrap"
                                 }}
                               >
@@ -2968,7 +2961,7 @@ export default function Home() {
           {adminSubTab === "export" && (
             <section style={styles.card}>
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Xuất bộ dữ liệu nghiên cứu</h2>
-              <p style={{ color: "#52525b", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
+              <p style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.5, margin: "0 0 20px" }}>
                 Tất cả các bản ghi thu âm hợp lệ và có sự đồng ý của người tham gia sẽ được đưa vào bộ dữ liệu xuất bản.
                 Dữ liệu bao gồm định danh ẩn danh, thời lượng, checksum SHA-256, từ khóa kỹ thuật và bản chép lời chuẩn xác.
               </p>
@@ -2979,10 +2972,10 @@ export default function Home() {
                   onClick={() => handleExportDownload("/api/v1/admin/export/manifest.json", "manifest.json")}
                   disabled={busy}
                   style={{
-                    background: "#ffffff",
+                    background: "var(--surface)",
                     padding: 18,
                     borderRadius: 8,
-                    border: "1px solid #e4e4e7",
+                    border: "1px solid var(--border)",
                     textAlign: "left",
                     cursor: busy ? "wait" : "pointer",
                     width: "100%"
@@ -2990,9 +2983,9 @@ export default function Home() {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <DownloadIcon size={15} />
-                    <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest JSON</strong>
+                    <strong style={{ color: "var(--text)", fontSize: 14 }}>Manifest JSON</strong>
                   </div>
-                  <div style={{ fontSize: 12, color: "#71717a" }}>Metadata cấu trúc JSON (Header-auth)</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Metadata cấu trúc JSON (Header-auth)</div>
                 </button>
 
                 <button
@@ -3000,10 +2993,10 @@ export default function Home() {
                   onClick={() => handleExportDownload("/api/v1/admin/export/manifest.csv", "manifest.csv")}
                   disabled={busy}
                   style={{
-                    background: "#ffffff",
+                    background: "var(--surface)",
                     padding: 18,
                     borderRadius: 8,
-                    border: "1px solid #e4e4e7",
+                    border: "1px solid var(--border)",
                     textAlign: "left",
                     cursor: busy ? "wait" : "pointer",
                     width: "100%"
@@ -3011,9 +3004,9 @@ export default function Home() {
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <DownloadIcon size={15} />
-                    <strong style={{ color: "#09090b", fontSize: 14 }}>Manifest CSV</strong>
+                    <strong style={{ color: "var(--text)", fontSize: 14 }}>Manifest CSV</strong>
                   </div>
-                  <div style={{ fontSize: 12, color: "#71717a" }}>Bảng tính Excel / CSV (Header-auth)</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Bảng tính Excel / CSV (Header-auth)</div>
                 </button>
 
                 <button
@@ -3021,20 +3014,20 @@ export default function Home() {
                   onClick={() => handleExportDownload("/api/v1/admin/export/archive.zip", "archive.zip")}
                   disabled={busy}
                   style={{
-                    background: "#09090b",
+                    background: "var(--text)",
                     padding: 18,
                     borderRadius: 8,
-                    border: "1px solid #09090b",
+                    border: "1px solid var(--text)",
                     textAlign: "left",
                     cursor: busy ? "wait" : "pointer",
                     width: "100%"
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <DownloadIcon size={15} color="#ffffff" />
-                    <strong style={{ color: "#ffffff", fontSize: 14 }}>Trọn gói ZIP</strong>
+                    <DownloadIcon size={15} color="var(--surface)" />
+                    <strong style={{ color: "var(--on-primary)", fontSize: 14 }}>Trọn gói ZIP</strong>
                   </div>
-                  <div style={{ fontSize: 12, color: "#a1a1aa" }}>Tất cả audio và manifests (Header-auth)</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>Tất cả audio và manifests (Header-auth)</div>
                 </button>
               </div>
             </section>
@@ -3043,7 +3036,7 @@ export default function Home() {
       )}
 
       {/* Clean Academic Footer */}
-      <footer style={{ marginTop: 40, borderTop: "1px solid #e5e7eb", paddingTop: 16, textAlign: "center", color: "#a1a1aa", fontSize: 12 }}>
+      <footer style={{ marginTop: 40, borderTop: "1px solid var(--border)", paddingTop: 16, textAlign: "center", color: "var(--muted)", fontSize: 12 }}>
         LiemWhisper Research Platform · Cross-Modal Contrastive Learning for Code-Switched Speech · Phục vụ NCKH
       </footer>
     </main>

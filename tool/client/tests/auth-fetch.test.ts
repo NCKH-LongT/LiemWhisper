@@ -9,8 +9,8 @@ test("fetchAuthenticatedAudioBlob sends headers and returns blob with object url
   let capturedUrl = "";
   let capturedHeaders: Record<string, string> = {};
 
-  const fakeFetch = async (url: string, init?: RequestInit) => {
-    capturedUrl = url;
+  const fakeFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+    capturedUrl = String(url);
     capturedHeaders = (init?.headers as Record<string, string>) || {};
     return {
       ok: true,

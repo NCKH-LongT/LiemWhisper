@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 export interface PromptDurationStat {
   prompt_id: string;
@@ -37,6 +37,10 @@ export function AdminDashboardDuration({
   const [selectedCourse, setSelectedCourse] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [sortBy, setSortBy] = useState<"default" | "count_desc" | "avg_desc" | "max_desc">("default");
+
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [expanded, setExpanded] = useState<string[]>([]);
+  useEffect(() => setVisibleCount(20), [selectedCourse, search, sortBy]);
 
   // Format seconds to readable mm:ss or hh:mm:ss
   const formatDuration = (totalSec: number) => {
@@ -82,48 +86,48 @@ export function AdminDashboardDuration({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* 1. Global Duration KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+      <div className="duration-kpis">
         <div style={kpiCardStyle}>
-          <div style={{ fontSize: 12, color: "#854d0e", fontWeight: 700, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, textTransform: "uppercase" }}>
             Tổng thời lượng thu âm
           </div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#a16207", marginTop: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {formatDuration(totalSec)}
           </div>
-          <div style={{ fontSize: 11, color: "#a1a1aa", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
             Tổng cộng {totalSec.toFixed(1)} giây
           </div>
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 700, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, textTransform: "uppercase" }}>
             Thời lượng trung bình / câu
           </div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#2563eb", marginTop: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {avgSec.toFixed(1)}s
           </div>
-          <div style={{ fontSize: 11, color: "#93c5fd", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--border)", marginTop: 2 }}>
             Tính trên tất cả câu đã thu
           </div>
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={{ fontSize: 12, color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700, textTransform: "uppercase" }}>
             Thời lượng ngắn nhất (Min)
           </div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#16a34a", marginTop: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--success)", marginTop: 4 }}>
             {minSec.toFixed(1)}s
           </div>
-          <div style={{ fontSize: 11, color: "#86efac", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--success-bg)", marginTop: 2 }}>
             Bản thu ngắn nhất trong hệ thống
           </div>
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={{ fontSize: 12, color: "#7c2d12", fontWeight: 700, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, textTransform: "uppercase" }}>
             Thời lượng dài nhất (Max)
           </div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#ea580c", marginTop: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {maxSec.toFixed(1)}s
           </div>
           <div style={{ fontSize: 11, color: "#fdba74", marginTop: 2 }}>
@@ -136,10 +140,10 @@ export function AdminDashboardDuration({
       <section style={panelCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#09090b" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text)" }}>
               Thống kê Thời lượng Từng Câu Hỏi (Min / Avg / Max)
             </h3>
-            <div style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
               Phân tích số lượng bản thu, thời lượng trung bình, ngắn nhất và dài nhất của từng câu
             </div>
           </div>
@@ -181,14 +185,14 @@ export function AdminDashboardDuration({
         </div>
 
         {filteredPrompts.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center", color: "#71717a", fontSize: 13, background: "#f8fafc", borderRadius: 8 }}>
+          <div style={{ padding: "32px 0", textAlign: "center", color: "var(--muted)", fontSize: 13, background: "var(--subtle)", borderRadius: 8 }}>
             Không tìm thấy câu hỏi nào phù hợp với bộ lọc.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="duration-table">
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#475569" }}>
+                <tr style={{ background: "var(--subtle)", borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--muted)" }}>
                   <th style={{ padding: "11px 12px", fontWeight: 600, width: 50 }}>STT</th>
                   <th style={{ padding: "11px 14px", fontWeight: 600 }}>Nội dung câu hỏi</th>
                   <th style={{ padding: "11px 12px", fontWeight: 600, width: 140 }}>Môn học</th>
@@ -201,7 +205,7 @@ export function AdminDashboardDuration({
                 </tr>
               </thead>
               <tbody>
-                {filteredPrompts.map((p, idx) => {
+                {filteredPrompts.slice(0, visibleCount).map((p, idx) => {
                   const hasRecs = p.recordings_count > 0;
                   const minPct = Math.min(100, Math.max(0, (p.min_duration_seconds / 45) * 100));
                   const maxPct = Math.min(100, Math.max(0, (p.max_duration_seconds / 45) * 100));
@@ -211,29 +215,30 @@ export function AdminDashboardDuration({
                     <tr
                       key={p.prompt_id}
                       style={{
-                        borderBottom: "1px solid #f1f5f9",
+                        borderBottom: "1px solid var(--subtle)",
                         transition: "background 0.15s"
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--subtle)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <td style={{ padding: "11px 12px", color: "#475569", fontWeight: 700, whiteSpace: "nowrap" }}>
+                      <td data-label="STT" style={{ padding: "11px 12px", color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>
                         {p.question_number ? `Câu ${String(p.question_number).padStart(2, "0")}` : `#${idx + 1}`}
                       </td>
-                      <td style={{ padding: "11px 14px" }}>
-                        <div style={{ fontWeight: 600, color: "#09090b", lineHeight: 1.45 }}>
+                      <td data-label="" style={{ padding: "11px 14px" }}>
+                        <div className={expanded.includes(p.prompt_id) ? "question-expanded" : "question-preview"} style={{ fontWeight: 500, color: "var(--text)", lineHeight: 1.6 }}>
                           {p.prompt_text}
                         </div>
+                        <button className="text-button" aria-expanded={expanded.includes(p.prompt_id)} onClick={() => setExpanded(ids => ids.includes(p.prompt_id) ? ids.filter(id => id !== p.prompt_id) : [...ids, p.prompt_id])}>{expanded.includes(p.prompt_id) ? "Thu gọn" : "Xem thêm"}</button>
                       </td>
-                      <td style={{ padding: "11px 12px", color: "#64748b", fontSize: 12 }}>
+                      <td data-label="Môn học" style={{ padding: "11px 12px", color: "var(--muted)", fontSize: 12 }}>
                         {p.course_title}
                       </td>
-                      <td style={{ padding: "11px 12px", textAlign: "center" }}>
+                      <td data-label="Số bản thu" style={{ padding: "11px 12px", textAlign: "center" }}>
                         <span
                           style={{
                             display: "inline-block",
-                            background: hasRecs ? "#eff6ff" : "#f1f5f9",
-                            color: hasRecs ? "#1d4ed8" : "#94a3b8",
+                            background: hasRecs ? "var(--subtle)" : "var(--subtle)",
+                            color: hasRecs ? "var(--primary)" : "var(--muted)",
                             padding: "2px 8px",
                             borderRadius: 12,
                             fontWeight: 700,
@@ -243,44 +248,44 @@ export function AdminDashboardDuration({
                           {p.recordings_count} bài
                         </span>
                       </td>
-                      <td style={{ padding: "11px 12px", textAlign: "center", color: hasRecs ? "#09090b" : "#94a3b8", fontWeight: 600 }}>
+                      <td data-label="Tổng thời lượng" style={{ padding: "11px 12px", textAlign: "center", color: hasRecs ? "var(--text)" : "var(--muted)", fontWeight: 600 }}>
                         {hasRecs ? `${p.total_duration_seconds.toFixed(1)}s` : "-"}
                       </td>
-                      <td style={{ padding: "11px 12px", textAlign: "center" }}>
+                      <td data-label="Trung bình" style={{ padding: "11px 12px", textAlign: "center" }}>
                         {hasRecs ? (
-                          <span style={{ fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "2px 7px", borderRadius: 4 }}>
+                          <span style={{ fontWeight: 700, color: "var(--primary)", background: "var(--subtle)", padding: "2px 7px", borderRadius: 4 }}>
                             {p.avg_duration_seconds.toFixed(1)}s
                           </span>
                         ) : (
-                          <span style={{ color: "#94a3b8" }}>-</span>
+                          <span style={{ color: "var(--muted)" }}>-</span>
                         )}
                       </td>
-                      <td style={{ padding: "11px 12px", textAlign: "center" }}>
+                      <td data-label="Ngắn nhất" style={{ padding: "11px 12px", textAlign: "center" }}>
                         {hasRecs ? (
-                          <span style={{ fontWeight: 600, color: "#166534", background: "#f0fdf4", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>
+                          <span style={{ fontWeight: 600, color: "var(--success)", background: "var(--success-bg)", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>
                             {p.min_duration_seconds.toFixed(1)}s
                           </span>
                         ) : (
-                          <span style={{ color: "#94a3b8" }}>-</span>
+                          <span style={{ color: "var(--muted)" }}>-</span>
                         )}
                       </td>
-                      <td style={{ padding: "11px 12px", textAlign: "center" }}>
+                      <td data-label="Dài nhất" style={{ padding: "11px 12px", textAlign: "center" }}>
                         {hasRecs ? (
-                          <span style={{ fontWeight: 600, color: "#c2410c", background: "#fff7ed", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>
+                          <span style={{ fontWeight: 600, color: "var(--primary)", background: "var(--subtle)", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>
                             {p.max_duration_seconds.toFixed(1)}s
                           </span>
                         ) : (
-                          <span style={{ color: "#94a3b8" }}>-</span>
+                          <span style={{ color: "var(--muted)" }}>-</span>
                         )}
                       </td>
-                      <td style={{ padding: "11px 14px" }}>
+                      <td data-label="" style={{ padding: "11px 14px" }}>
                         {hasRecs ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                             <div
                               style={{
                                 width: "100%",
                                 height: 7,
-                                background: "#e2e8f0",
+                                background: "var(--border)",
                                 borderRadius: 4,
                                 position: "relative",
                                 overflow: "hidden"
@@ -293,7 +298,7 @@ export function AdminDashboardDuration({
                                   left: `${minPct}%`,
                                   width: `${Math.max(4, maxPct - minPct)}%`,
                                   height: "100%",
-                                  background: "#93c5fd",
+                                  background: "var(--border)",
                                   borderRadius: 4
                                 }}
                               />
@@ -303,19 +308,19 @@ export function AdminDashboardDuration({
                                   left: `${Math.max(0, avgPct - 1)}%`,
                                   width: 3,
                                   height: "100%",
-                                  background: "#1d4ed8",
+                                  background: "var(--primary)",
                                   borderRadius: 2
                                 }}
                               />
                             </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)" }}>
                               <span>{p.min_duration_seconds.toFixed(0)}s</span>
-                              <span style={{ color: "#2563eb", fontWeight: 700 }}>{p.avg_duration_seconds.toFixed(1)}s</span>
+                              <span style={{ color: "var(--primary)", fontWeight: 700 }}>{p.avg_duration_seconds.toFixed(1)}s</span>
                               <span>{p.max_duration_seconds.toFixed(0)}s</span>
                             </div>
                           </div>
                         ) : (
-                          <span style={{ color: "#cbd5e1", fontSize: 11 }}>Chưa có bài thu</span>
+                          <span style={{ color: "var(--border)", fontSize: 11 }}>Chưa có bài thu</span>
                         )}
                       </td>
                     </tr>
@@ -325,22 +330,23 @@ export function AdminDashboardDuration({
             </table>
           </div>
         )}
+        <div className="table-footer"><span>Hiển thị {Math.min(visibleCount, filteredPrompts.length)} / {filteredPrompts.length} câu hỏi</span>{visibleCount < filteredPrompts.length && <button className="ui-button" onClick={() => setVisibleCount(n => n + 20)}>Tải thêm</button>}</div>
       </section>
     </div>
   );
 }
 
 const kpiCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "16px 18px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
 };
 
 const panelCardStyle: React.CSSProperties = {
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "20px 22px",
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
@@ -350,16 +356,16 @@ const selectStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontSize: 13,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
+  border: "1px solid var(--border)",
   outline: "none",
-  background: "#ffffff"
+  background: "var(--surface)"
 };
 
 const searchInputStyle: React.CSSProperties = {
   padding: "8px 14px",
   fontSize: 13,
   borderRadius: 6,
-  border: "1px solid #cbd5e1",
+  border: "1px solid var(--border)",
   outline: "none",
   minWidth: 200
 };
