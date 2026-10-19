@@ -2027,17 +2027,32 @@ export default function Home() {
                     <ChevronLeftIcon size={14} />
                     <span>Trước</span>
                   </button>
-                  <button
-                    style={styles.btnSecondary}
-                    disabled={currentIndex === tasks.length - 1 || isRecording}
-                    onClick={() => {
-                      clearRecordedAudio();
-                      setCurrentIndex((i) => Math.min(tasks.length - 1, i + 1));
-                    }}
-                  >
-                    <span>Tiếp</span>
-                    <ChevronRightIcon size={14} />
-                  </button>
+                  {(() => {
+                    const canGoNext = Boolean(currentTask.recording_id || isParticipantCompleted);
+                    const isNextDisabled = currentIndex === tasks.length - 1 || isRecording || !canGoNext;
+                    return (
+                      <button
+                        style={{
+                          ...styles.btnSecondary,
+                          opacity: isNextDisabled ? 0.45 : 1,
+                          cursor: isNextDisabled ? "not-allowed" : "pointer"
+                        }}
+                        disabled={isNextDisabled}
+                        title={!canGoNext ? "Vui lòng thu âm và nộp câu này trước khi chuyển sang câu tiếp theo" : ""}
+                        onClick={() => {
+                          if (!canGoNext) {
+                            setError("Vui lòng thu âm và nộp câu này trước khi chuyển sang câu tiếp theo.");
+                            return;
+                          }
+                          clearRecordedAudio();
+                          setCurrentIndex((i) => Math.min(tasks.length - 1, i + 1));
+                        }}
+                      >
+                        <span>Tiếp</span>
+                        <ChevronRightIcon size={14} />
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -2313,33 +2328,53 @@ export default function Home() {
 
               {/* QUESTION PAGINATION STRIP */}
               <div style={{ marginTop: 28, borderTop: "1px solid #f4f4f5", paddingTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a", marginBottom: 8 }}>
-                  Danh sách câu:
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a" }}>
+                    Danh sách câu:
+                  </div>
+                  {!isParticipantCompleted && (
+                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                      * Cần thu âm xong câu hiện tại để mở câu tiếp theo
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {tasks.map((t, idx) => (
-                    <button
-                      key={t.id}
-                      disabled={isRecording}
-                      onClick={() => {
-                        clearRecordedAudio();
-                        setCurrentIndex(idx);
-                      }}
-                      style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 6,
-                        border: idx === currentIndex ? "1.5px solid #09090b" : "1px solid #e4e4e7",
-                        background: t.recording_id ? "#16a34a" : idx === currentIndex ? "#f4f4f5" : "#ffffff",
-                        color: t.recording_id ? "#ffffff" : idx === currentIndex ? "#09090b" : "#52525b",
-                        fontWeight: 600,
-                        fontSize: 12,
-                        cursor: "pointer"
-                      }}
-                    >
-                      {idx + 1}
-                    </button>
-                  ))}
+                  {tasks.map((t, idx) => {
+                    const isRecorded = Boolean(t.recording_id);
+                    const isCurrent = idx === currentIndex;
+                    // Student can jump to any already recorded question, current question, or next question if current is recorded
+                    const canJump = isParticipantCompleted || isRecorded || isCurrent || (idx > 0 && tasks.slice(0, idx).every((prev) => Boolean(prev.recording_id)));
+
+                    return (
+                      <button
+                        key={t.id}
+                        disabled={isRecording || !canJump}
+                        title={!canJump ? `Cần hoàn thành các câu trước trước khi mở câu ${idx + 1}` : `Câu ${idx + 1}`}
+                        onClick={() => {
+                          if (!canJump) {
+                            setError(`Vui lòng hoàn thành câu hiện tại trước khi chuyển sang câu ${idx + 1}.`);
+                            return;
+                          }
+                          clearRecordedAudio();
+                          setCurrentIndex(idx);
+                        }}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: 6,
+                          border: isCurrent ? "1.5px solid #09090b" : "1px solid #e4e4e7",
+                          background: isRecorded ? "#16a34a" : isCurrent ? "#f4f4f5" : "#ffffff",
+                          color: isRecorded ? "#ffffff" : isCurrent ? "#09090b" : "#52525b",
+                          fontWeight: 600,
+                          fontSize: 12,
+                          cursor: canJump && !isRecording ? "pointer" : "not-allowed",
+                          opacity: canJump ? 1 : 0.4
+                        }}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </section>

@@ -1009,8 +1009,10 @@ async def upload_recording(
             raise HTTPException(403, "Bài thi đã hoàn thành, không thể nộp thêm hoặc sửa đổi bản ghi âm.")
         if not c.execute("SELECT 1 FROM prompts WHERE id=? AND published=1", (prompt_id,)).fetchone():
             raise HTTPException(404, "Prompt unavailable")
-        if c.execute("SELECT 1 FROM recordings WHERE prompt_id=? AND participant_id=?", (prompt_id, pid)).fetchone():
-            raise HTTPException(409, "Bạn đã nộp bản ghi cho câu này rồi")
+        existing_rec = c.execute(
+            "SELECT id, storage_key, drive_file_id FROM recordings WHERE prompt_id=? AND participant_id=?",
+            (prompt_id, pid)
+        ).fetchone()
 
     body = await audio.read(MAX_BYTES + 1)
     if len(body) < 100:
@@ -1019,27 +1021,56 @@ async def upload_recording(
         raise HTTPException(413, "Dung lượng file vượt quá giới hạn 15MB")
 
     ext, norm_mime = detect_audio_format(body, audio.content_type)
-    rec_id = str(uuid.uuid4())
     now = int(time.time())
     file_sha256 = hashlib.sha256(body).hexdigest()
     drive_ready = is_drive_connected(db)
     initial_sync_status = "pending" if (STORAGE == "sql_drive" or drive_ready) else "disabled"
     client_ip = get_client_ip(request)
 
+    # If re-recording, preserve the existing recording ID and Drive file ID so only the latest audio is kept
+    rec_id = existing_rec["id"] if existing_rec else str(uuid.uuid4())
+
+    # Clean up old local storage file if extension/path changed
+    if existing_rec and STORAGE == "local" and existing_rec["storage_key"]:
+        old_path = Path(existing_rec["storage_key"])
+        if old_path.is_file() and old_path.suffix != f".{ext}":
+            try:
+                old_path.unlink()
+            except Exception:
+                pass
+
     with db() as c:
         try:
             storage_key = store_audio_bytes(rec_id, body, ext, norm_mime, STORAGE, c, AUDIO_DIR)
-            if initial_sync_status == "pending":
-                from app.worker import enqueue_upload_job
-                has_job = c.execute("SELECT 1 FROM drive_sync_jobs WHERE recording_id=? AND action='upload'", (rec_id,)).fetchone()
-                if not has_job:
-                    enqueue_upload_job(c, rec_id)
 
-            c.execute("""
-                INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
-                                       duration_seconds, format, status, created_at, drive_sync_status, client_ip)
-                VALUES (?,?,?,?,?,?,?,?,?,'approved',?,?,?)
-            """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status, client_ip))
+            if existing_rec:
+                # Update existing recording with the latest audio (idempotent overwrite)
+                c.execute("""
+                    UPDATE recordings
+                    SET storage_key=?, sha256=?, mime=?, bytes=?, duration_seconds=?, format=?,
+                        status='approved', created_at=?, drive_sync_status=?, client_ip=?
+                    WHERE id=?
+                """, (storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status, client_ip, rec_id))
+
+                if initial_sync_status == "pending":
+                    from app.worker import enqueue_upload_job
+                    c.execute(
+                        "DELETE FROM drive_sync_jobs WHERE recording_id=? AND action='upload' AND status IN ('pending', 'retrying')",
+                        (rec_id,)
+                    )
+                    enqueue_upload_job(c, rec_id)
+            else:
+                if initial_sync_status == "pending":
+                    from app.worker import enqueue_upload_job
+                    has_job = c.execute("SELECT 1 FROM drive_sync_jobs WHERE recording_id=? AND action='upload'", (rec_id,)).fetchone()
+                    if not has_job:
+                        enqueue_upload_job(c, rec_id)
+
+                c.execute("""
+                    INSERT INTO recordings(id, participant_id, prompt_id, storage_key, sha256, mime, bytes,
+                                           duration_seconds, format, status, created_at, drive_sync_status, client_ip)
+                    VALUES (?,?,?,?,?,?,?,?,?,'approved',?,?,?)
+                """, (rec_id, pid, prompt_id, storage_key, file_sha256, norm_mime, len(body), duration, ext, now, initial_sync_status, client_ip))
         except Exception as exc:
             msg = str(exc)
             if "UNIQUE" in msg.upper() or "INTEGRITY" in msg.upper():

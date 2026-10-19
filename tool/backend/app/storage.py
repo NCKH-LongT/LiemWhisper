@@ -45,6 +45,10 @@ def store_audio_bytes(
 
     # 'sql' or 'sql_drive'
     db_conn.execute(
+        "DELETE FROM recording_audio WHERE recording_id = ?",
+        (recording_id,)
+    )
+    db_conn.execute(
         "INSERT INTO recording_audio(recording_id, body) VALUES (?, ?)",
         (recording_id, body)
     )
