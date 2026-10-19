@@ -367,6 +367,7 @@ def init_db() -> None:
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS onboarded INTEGER DEFAULT 0;
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS completed_at INTEGER DEFAULT 0;
             ALTER TABLE participants ADD COLUMN IF NOT EXISTS is_admin INTEGER DEFAULT 0;
+            ALTER TABLE participants ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS duration_seconds REAL DEFAULT 0.0;
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS format TEXT DEFAULT 'webm';
             ALTER TABLE recordings ADD COLUMN IF NOT EXISTS reviewer_notes TEXT DEFAULT '';
@@ -408,7 +409,8 @@ def init_db() -> None:
                 google_id TEXT DEFAULT '',
                 name TEXT DEFAULT '',
                 onboarded INTEGER DEFAULT 0,
-                completed_at INTEGER DEFAULT 0
+                completed_at INTEGER DEFAULT 0,
+                drive_folder_id TEXT
             );
             CREATE TABLE IF NOT EXISTS recordings(
                 id TEXT PRIMARY KEY,
@@ -486,6 +488,8 @@ def init_db() -> None:
                 c.execute("ALTER TABLE participants ADD COLUMN completed_at INTEGER DEFAULT 0")
             if "is_admin" not in part_cols:
                 c.execute("ALTER TABLE participants ADD COLUMN is_admin INTEGER DEFAULT 0")
+            if "drive_folder_id" not in part_cols:
+                c.execute("ALTER TABLE participants ADD COLUMN drive_folder_id TEXT")
 
             rec_cols = [r[1] for r in c.execute("PRAGMA table_info(recordings)").fetchall()]
             if "duration_seconds" not in rec_cols:

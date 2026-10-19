@@ -17,6 +17,14 @@ MAX_RETRIES = 5
 
 
 def enqueue_upload_job(db_conn: Any, recording_id: str) -> str:
+    # Check if an active or synced upload job already exists
+    existing = db_conn.execute(
+        "SELECT id FROM drive_sync_jobs WHERE recording_id=? AND action='upload' AND status IN ('pending', 'uploading', 'retrying', 'synced')",
+        (recording_id,)
+    ).fetchone()
+    if existing:
+        return existing[0] if isinstance(existing, (tuple, list)) else existing["id"]
+
     job_id = str(uuid.uuid4())
     now = int(time.time())
     db_conn.execute(
@@ -119,8 +127,8 @@ def process_outbox(
 
                 # Check if recording still exists (withdrawal race)
                 rec = c.execute("""
-                    SELECT r.id, r.participant_id, r.prompt_id, r.sha256, r.format, r.mime, r.storage_key,
-                           p.participant_code, p.name as participant_name, p.email as participant_email,
+                    SELECT r.id, r.participant_id, r.prompt_id, r.sha256, r.format, r.mime, r.storage_key, r.drive_file_id,
+                           p.participant_code, p.name as participant_name, p.email as participant_email, p.drive_folder_id,
                            pr.course_id
                     FROM recordings r
                     LEFT JOIN participants p ON p.id = r.participant_id
@@ -156,6 +164,10 @@ def process_outbox(
 
                 cau_label = f"Cau{q_order:02d}"
                 filename = f"{code}_{cau_label}_{rec_id[:8]}.{rec['format']}" if code else f"{rec_id}.{rec['format']}"
+
+                # Reuse existing file_id from recording if not attached to job
+                if not file_id and rec and rec.get("drive_file_id"):
+                    file_id = rec["drive_file_id"]
 
                 # Preallocate Drive ID if not yet allocated, and persist immediately before uploading
                 if not file_id:
@@ -197,20 +209,29 @@ def process_outbox(
                     )
                     continue
 
-            # Subfolder in Drive for participant
-            parent_folder_id = None
-            if hasattr(drive_client, "get_or_create_subfolder"):
+            # Subfolder in Drive for participant - reuse stored folder_id if available
+            parent_folder_id = rec.get("drive_folder_id") if rec else None
+            if not parent_folder_id and hasattr(drive_client, "get_or_create_subfolder"):
                 try:
                     parent_folder_id = drive_client.get_or_create_subfolder(folder_name)
+                    if parent_folder_id and rec and rec.get("participant_id"):
+                        with db_factory() as c_up:
+                            c_up.execute(
+                                "UPDATE participants SET drive_folder_id=? WHERE id=? AND (drive_folder_id IS NULL OR drive_folder_id='')",
+                                (parent_folder_id, rec["participant_id"])
+                            )
                 except Exception as exc:
                     logger.warning("Could not create subfolder '%s': %s", folder_name, exc)
 
             # Perform Drive upload
             try:
                 if parent_folder_id and hasattr(drive_client, "get_or_create_subfolder"):
-                    drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"], parent_id=parent_folder_id)
+                    actual_file_id = drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"], parent_id=parent_folder_id)
                 else:
-                    drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"])
+                    actual_file_id = drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"])
+
+                if actual_file_id and actual_file_id != file_id:
+                    file_id = actual_file_id
 
                 # Verify SHA256 by downloading back
                 downloaded = drive_client.download(file_id)
@@ -228,8 +249,8 @@ def process_outbox(
                             pass
                         c.execute("UPDATE drive_sync_jobs SET status='cancelled', updated_at=? WHERE id=?", (now, job_id))
                     else:
-                        c.execute("UPDATE drive_sync_jobs SET status='synced', updated_at=? WHERE id=?", (now, job_id))
-                        c.execute("UPDATE recordings SET drive_sync_status='synced' WHERE id=?", (rec_id,))
+                        c.execute("UPDATE drive_sync_jobs SET status='synced', drive_file_id=?, updated_at=? WHERE id=?", (file_id, now, job_id))
+                        c.execute("UPDATE recordings SET drive_sync_status='synced', drive_file_id=? WHERE id=?", (file_id, rec_id))
                         processed_count += 1
             except Exception as exc:
                 err_msg = str(exc)
@@ -267,9 +288,9 @@ def backfill_unsynced_drive_jobs(db_factory: Callable[[], Any]) -> int:
     enqueued = 0
     with db_factory() as c:
         rows = c.execute("""
-            SELECT r.id
+            SELECT r.id, r.drive_file_id
             FROM recordings r
-            WHERE (r.drive_sync_status IS NULL OR r.drive_sync_status != 'synced')
+            WHERE (r.drive_sync_status IS NULL OR r.drive_sync_status NOT IN ('synced', 'failed'))
               AND NOT EXISTS (
                   SELECT 1 FROM drive_sync_jobs j
                   WHERE j.recording_id = r.id
@@ -280,11 +301,12 @@ def backfill_unsynced_drive_jobs(db_factory: Callable[[], Any]) -> int:
 
         for row in rows:
             rec_id = row[0] if isinstance(row, (tuple, list)) else row["id"]
+            existing_fid = row[1] if isinstance(row, (tuple, list)) else row.get("drive_file_id")
             job_id = str(uuid.uuid4())
             c.execute(
                 """INSERT INTO drive_sync_jobs(id, recording_id, action, status, drive_file_id, attempts, created_at, updated_at)
-                   VALUES (?, ?, 'upload', 'pending', NULL, 0, ?, ?)""",
-                (job_id, rec_id, now, now)
+                   VALUES (?, ?, 'upload', 'pending', ?, 0, ?, ?)""",
+                (job_id, rec_id, existing_fid, now, now)
             )
             c.execute(
                 "UPDATE recordings SET drive_sync_status = 'pending' WHERE id = ? AND (drive_sync_status IS NULL OR drive_sync_status = 'disabled')",
@@ -453,6 +475,12 @@ def organize_existing_drive_files(db_factory: Callable[[], Any], drive_client: A
             except Exception:
                 continue
         subfolder_id = subfolder_cache[folder_name]
+        if subfolder_id and r.get("participant_id"):
+            with db_factory() as c_up:
+                c_up.execute(
+                    "UPDATE participants SET drive_folder_id=? WHERE id=? AND (drive_folder_id IS NULL OR drive_folder_id='')",
+                    (subfolder_id, r["participant_id"])
+                )
 
         # Calculate question order
         with db_factory() as c:

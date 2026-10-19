@@ -532,6 +532,7 @@ class GoogleDriveClient:
         self._refresh_token_enc = refresh_token_enc
         self._access_token: str | None = None
         self._token_expires_at: float = 0.0
+        self._subfolder_cache: dict[str, str] = {}
 
     def _get_access_token(self) -> str:
         now = time.time()
@@ -587,12 +588,12 @@ class GoogleDriveClient:
         except Exception:
             raise RuntimeError("Failed to allocate Google Drive file ID")
 
-    def put(self, file_id: str, name: str, body: bytes, mime: str, parent_id: str | None = None) -> None:
+    def put(self, file_id: str, name: str, body: bytes, mime: str, parent_id: str | None = None) -> str:
         token = self._get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
         target_folder = parent_id or self.folder_id
 
-        # Idempotent check: see if file already exists
+        # 1. Idempotent check: see if file with file_id already exists in Drive
         existing_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,parents,trashed"
         try:
             check_res = requests.request("GET", existing_url, headers=headers, timeout=15.0)
@@ -627,11 +628,46 @@ class GoogleDriveClient:
                         json=patch_meta,
                         timeout=15.0
                     )
-                return
+                return file_id
             elif check_res.status_code != 404:
                 check_res.raise_for_status()
         except ValueError:
             raise
+        except Exception:
+            pass
+
+        # 2. Check if a file with the same name already exists in target_folder (idempotent duplicate prevention)
+        escaped_name = name.replace("'", "\\'")
+        name_q = f"'{target_folder}' in parents and name = '{escaped_name}' and trashed = false"
+        try:
+            res_name = requests.request(
+                "GET",
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params={"q": name_q, "fields": "files(id, name)"},
+                timeout=15.0
+            )
+            if res_name.status_code == 200:
+                name_files = res_name.json().get("files", [])
+                if name_files:
+                    existing_named_id = name_files[0]["id"]
+                    # If duplicate files already exist in Drive with the exact same name, delete redundant extras
+                    if len(name_files) > 1:
+                        for dup in name_files[1:]:
+                            try:
+                                self.delete(dup["id"])
+                            except Exception:
+                                pass
+                    patch_url = f"https://www.googleapis.com/upload/drive/v3/files/{existing_named_id}?uploadType=media"
+                    upload_res = requests.request(
+                        "PATCH",
+                        patch_url,
+                        headers={**headers, "Content-Type": mime},
+                        data=body,
+                        timeout=15.0,
+                    )
+                    upload_res.raise_for_status()
+                    return existing_named_id
         except Exception:
             pass
 
@@ -660,9 +696,14 @@ class GoogleDriveClient:
         upload_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
         res = requests.request("POST", upload_url, headers=upload_headers, data=payload, timeout=15.0)
         res.raise_for_status()
+        return file_id
 
     def get_or_create_subfolder(self, folder_name: str, parent_id: str | None = None) -> str:
         target_parent = parent_id or self.folder_id
+        cache_key = f"{target_parent}:{folder_name}"
+        if cache_key in self._subfolder_cache:
+            return self._subfolder_cache[cache_key]
+
         token = self._get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
         escaped_name = folder_name.replace("'", "\\'")
@@ -672,7 +713,9 @@ class GoogleDriveClient:
             if res.status_code == 200:
                 files = res.json().get("files", [])
                 if files:
-                    return files[0]["id"]
+                    found_id = files[0]["id"]
+                    self._subfolder_cache[cache_key] = found_id
+                    return found_id
         except Exception:
             pass
 
@@ -688,7 +731,9 @@ class GoogleDriveClient:
             timeout=15.0,
         )
         create_res.raise_for_status()
-        return create_res.json()["id"]
+        created_id = create_res.json()["id"]
+        self._subfolder_cache[cache_key] = created_id
+        return created_id
 
     def upload_or_update_file(self, filename: str, body: bytes, mime: str = "text/csv; charset=utf-8", parent_id: str | None = None) -> str:
         target_parent = parent_id or self.folder_id
@@ -799,6 +844,41 @@ class GoogleDriveClient:
         if res.status_code == 404 or res.status_code in (200, 204):
             return
         res.raise_for_status()
+
+    def list_children(self, parent_id: str | None = None, mime_type: str | None = None) -> list[dict]:
+        """Lists active (non-trashed) files/folders inside a parent folder."""
+        target_parent = parent_id or self.folder_id
+        token = self._get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        q_parts = [f"'{target_parent}' in parents", "trashed = false"]
+        if mime_type:
+            q_parts.append(f"mimeType = '{mime_type}'")
+        q = " and ".join(q_parts)
+
+        items = []
+        page_token = None
+        while True:
+            params = {
+                "q": q,
+                "fields": "nextPageToken, files(id, name, mimeType, parents, createdTime, size)",
+                "pageSize": 1000,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            res = requests.request(
+                "GET",
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params=params,
+                timeout=20.0,
+            )
+            res.raise_for_status()
+            data = res.json()
+            items.extend(data.get("files", []))
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+        return items
 
 
 def get_drive_client(db: Callable[[], Any]) -> GoogleDriveClient:

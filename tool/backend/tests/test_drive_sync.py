@@ -72,6 +72,16 @@ class FakeDriveClient:
         self.files[fid] = {"name": filename, "body": body, "mime": mime}
         return fid
 
+    def list_children(self, parent_id: str | None = None, mime_type: str | None = None) -> list[dict]:
+        items = []
+        for fid, f in self.files.items():
+            if parent_id and f.get("parent") != parent_id:
+                continue
+            if mime_type and f.get("mime") != mime_type:
+                continue
+            items.append({"id": fid, "name": f["name"], "mimeType": f.get("mime", ""), "parents": [f.get("parent")]})
+        return items
+
 
 ADMIN = {"x-admin-key": "test-only-admin-secret"}
 AUDIO_SAMPLE = b"\x1a\x45\xdf\xa3" + b"AUDIO_DATA_" * 10
@@ -362,4 +372,42 @@ def test_question_numbering_identical_created_at(tmp_path, monkeypatch):
     assert "Cau01" in csv_text
     assert "Cau02" in csv_text
     assert "Cau03" in csv_text
+
+
+def test_duplicate_prevention_and_folder_caching(tmp_path, monkeypatch):
+    main, client, course, prompt1, prompt2, token = setup_drive_app(tmp_path, monkeypatch)
+    fake_drive = FakeDriveClient()
+
+    res = client.post(
+        "/api/v1/recordings",
+        headers=token,
+        data={"prompt_id": prompt1, "duration": 3.0},
+        files={"audio": ("cau1.webm", AUDIO_SAMPLE, "audio/webm")}
+    )
+    rec_id = res.json()["recording_id"]
+
+    # Ensure enqueue_upload_job does not create duplicate pending jobs for the same recording
+    from app.worker import enqueue_upload_job, process_outbox, backfill_unsynced_drive_jobs
+    with main.db() as c:
+        job_id_1 = enqueue_upload_job(c, rec_id)
+        job_id_2 = enqueue_upload_job(c, rec_id)
+        assert job_id_1 == job_id_2
+
+        jobs_count = c.execute("SELECT count(*) FROM drive_sync_jobs WHERE recording_id=?", (rec_id,)).fetchone()[0]
+        assert jobs_count == 1
+
+    # Process outbox
+    processed = process_outbox(main.db, fake_drive)
+    assert processed == 1
+
+    # Verify participant has drive_folder_id populated in database
+    with main.db() as c:
+        p_row = c.execute("SELECT drive_folder_id FROM participants WHERE participant_code='SV_DRIVE'").fetchone()
+        assert p_row is not None
+        assert p_row["drive_folder_id"] is not None
+        assert "folder-" in p_row["drive_folder_id"]
+
+    # Verify backfill does not enqueue duplicate jobs for synced recordings
+    enqueued = backfill_unsynced_drive_jobs(main.db)
+    assert enqueued == 0
 
