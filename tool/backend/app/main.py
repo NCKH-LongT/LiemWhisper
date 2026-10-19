@@ -1244,6 +1244,51 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
         tot_dur_row = c.execute("SELECT COALESCE(SUM(duration_seconds), 0) FROM recordings").fetchone()
         total_duration = tot_dur_row[0] if tot_dur_row else 0
 
+        # Detailed duration statistics across all recordings
+        dur_stats_row = c.execute("""
+            SELECT COALESCE(SUM(duration_seconds), 0.0),
+                   COALESCE(AVG(CASE WHEN duration_seconds > 0 THEN duration_seconds ELSE NULL END), 0.0),
+                   COALESCE(MIN(CASE WHEN duration_seconds > 0 THEN duration_seconds ELSE NULL END), 0.0),
+                   COALESCE(MAX(duration_seconds), 0.0)
+            FROM recordings
+        """).fetchone()
+        tot_dur = dur_stats_row[0] if dur_stats_row else 0.0
+        avg_dur = dur_stats_row[1] if dur_stats_row else 0.0
+        min_dur = dur_stats_row[2] if dur_stats_row else 0.0
+        max_dur = dur_stats_row[3] if dur_stats_row else 0.0
+
+        # Detailed per-prompt duration statistics (count, total, avg, min, max)
+        prompt_stats_rows = c.execute("""
+            SELECT p.id as prompt_id,
+                   p.text as prompt_text,
+                   p.course_id,
+                   c.title as course_title,
+                   COUNT(r.id) as recordings_count,
+                   COALESCE(SUM(r.duration_seconds), 0.0) as total_duration_seconds,
+                   COALESCE(AVG(CASE WHEN r.duration_seconds > 0 THEN r.duration_seconds ELSE NULL END), 0.0) as avg_duration_seconds,
+                   COALESCE(MIN(CASE WHEN r.duration_seconds > 0 THEN r.duration_seconds ELSE NULL END), 0.0) as min_duration_seconds,
+                   COALESCE(MAX(r.duration_seconds), 0.0) as max_duration_seconds
+            FROM prompts p
+            JOIN courses c ON c.id = p.course_id
+            LEFT JOIN recordings r ON r.prompt_id = p.id
+            GROUP BY p.id, p.text, p.course_id, c.title, p.created_at
+            ORDER BY c.title ASC, p.created_at ASC, p.id ASC
+        """).fetchall()
+
+        prompt_stats = []
+        for r in prompt_stats_rows:
+            prompt_stats.append({
+                "prompt_id": r["prompt_id"],
+                "prompt_text": r["prompt_text"],
+                "course_id": r["course_id"],
+                "course_title": r["course_title"],
+                "recordings_count": int(r["recordings_count"]),
+                "total_duration_seconds": round(float(r["total_duration_seconds"]), 1),
+                "avg_duration_seconds": round(float(r["avg_duration_seconds"]), 1),
+                "min_duration_seconds": round(float(r["min_duration_seconds"]), 1),
+                "max_duration_seconds": round(float(r["max_duration_seconds"]), 1),
+            })
+
         course_breakdown = c.execute("""
             SELECT c.id, c.title,
                    COUNT(DISTINCT p.id) as prompts_count,
@@ -1268,6 +1313,13 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
             "pending_recordings": recs_pending,
             "approved_duration_minutes": round(approved_duration / 60.0, 2),
             "total_duration_minutes": round(total_duration / 60.0, 2),
+            "duration_stats": {
+                "total_seconds": round(float(tot_dur), 1),
+                "avg_seconds": round(float(avg_dur), 1),
+                "min_seconds": round(float(min_dur), 1),
+                "max_seconds": round(float(max_dur), 1),
+            },
+            "prompt_duration_stats": prompt_stats,
             "courses": [dict(r) for r in course_breakdown]
         }
 

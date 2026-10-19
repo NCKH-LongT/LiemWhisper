@@ -17,6 +17,7 @@ import { AdminDrivePanel } from "../components/AdminDrivePanel";
 import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
 import { AdminParticipantsPanel } from "../components/AdminParticipantsPanel";
 import { AdminQuestionsPanel } from "../components/AdminQuestionsPanel";
+import { AdminDashboardDuration } from "../components/AdminDashboardDuration";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -64,6 +65,23 @@ type AdminStats = {
   pending_recordings: number;
   approved_duration_minutes: number;
   total_duration_minutes: number;
+  duration_stats?: {
+    total_seconds: number;
+    avg_seconds: number;
+    min_seconds: number;
+    max_seconds: number;
+  };
+  prompt_duration_stats?: Array<{
+    prompt_id: string;
+    prompt_text: string;
+    course_id: string;
+    course_title: string;
+    recordings_count: number;
+    total_duration_seconds: number;
+    avg_duration_seconds: number;
+    min_duration_seconds: number;
+    max_duration_seconds: number;
+  }>;
   courses: Array<{
     id: string;
     title: string;
@@ -2510,50 +2528,60 @@ export default function Home() {
 
           {/* SUBTAB 1: STATS */}
           {adminSubTab === "stats" && stats && (
-            <section style={styles.card}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Tổng quan tiến độ thu thập</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-                <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Môn học</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_courses}</div>
-                </div>
-                <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Câu hỏi xuất bản</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.published_prompts}</div>
-                </div>
-                <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Người tham gia</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_participants}</div>
-                </div>
-                <div style={{ background: "#f5f3ff", padding: 14, borderRadius: 8, border: "1px solid #ddd6fe" }}>
-                  <div style={{ fontSize: 12, color: "#6b21a8" }}>Quản trị viên (Gmail)</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", marginTop: 4 }}>{adminUsersList.length || 1}</div>
-                </div>
-                <div style={{ background: "#f0fdf4", padding: 14, borderRadius: 8, border: "1px solid #bbf7d0" }}>
-                  <div style={{ fontSize: 12, color: "#166534" }}>Tổng bản ghi thu âm</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#15803d", marginTop: 4 }}>{stats.total_recordings}</div>
-                </div>
-                <div style={{ background: "#fefce8", padding: 14, borderRadius: 8, border: "1px solid #fef08a" }}>
-                  <div style={{ fontSize: 12, color: "#854d0e" }}>Tổng thời lượng (phút)</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#a16207", marginTop: 4 }}>{stats.total_duration_minutes}m</div>
-                </div>
-              </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Detailed Duration Analytics (KPIs + Per-Prompt Min/Avg/Max Table) */}
+              <AdminDashboardDuration
+                durationStats={stats.duration_stats}
+                promptStats={stats.prompt_duration_stats}
+                courses={adminCourses}
+              />
 
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: "#27272a", marginBottom: 12 }}>Tiến độ từng môn học:</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {stats.courses.map((c) => (
-                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", padding: 12, background: "#f8fafc", borderRadius: 6, border: "1px solid #f1f5f9", alignItems: "center" }}>
-                    <div>
-                      <strong style={{ fontSize: 14, color: "#09090b" }}>{c.title}</strong>
-                      <span style={{ fontSize: 12, color: "#71717a", marginLeft: 8 }}>({c.prompts_count} câu)</span>
-                    </div>
-                    <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "#16a34a", fontWeight: 600 }}>{c.recordings_count} bản ghi đã nộp</span>
-                    </div>
+              {/* General Progress and Course Breakdown */}
+              <section style={styles.card}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Tổng quan tiến độ thu thập</h2>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Môn học</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_courses}</div>
                   </div>
-                ))}
-              </div>
-            </section>
+                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Câu hỏi xuất bản</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.published_prompts}</div>
+                  </div>
+                  <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Người tham gia</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#09090b", marginTop: 4 }}>{stats.total_participants}</div>
+                  </div>
+                  <div style={{ background: "#f5f3ff", padding: 14, borderRadius: 8, border: "1px solid #ddd6fe" }}>
+                    <div style={{ fontSize: 12, color: "#6b21a8" }}>Quản trị viên (Gmail)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#7c3aed", marginTop: 4 }}>{adminUsersList.length || 1}</div>
+                  </div>
+                  <div style={{ background: "#f0fdf4", padding: 14, borderRadius: 8, border: "1px solid #bbf7d0" }}>
+                    <div style={{ fontSize: 12, color: "#166534" }}>Tổng bản ghi thu âm</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#15803d", marginTop: 4 }}>{stats.total_recordings}</div>
+                  </div>
+                  <div style={{ background: "#fefce8", padding: 14, borderRadius: 8, border: "1px solid #fef08a" }}>
+                    <div style={{ fontSize: 12, color: "#854d0e" }}>Tổng thời lượng (phút)</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#a16207", marginTop: 4 }}>{stats.total_duration_minutes}m</div>
+                  </div>
+                </div>
+
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "#27272a", marginBottom: 12 }}>Tiến độ từng môn học:</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {stats.courses.map((c) => (
+                    <div key={c.id} style={{ display: "flex", justifyContent: "space-between", padding: 12, background: "#f8fafc", borderRadius: 6, border: "1px solid #f1f5f9", alignItems: "center" }}>
+                      <div>
+                        <strong style={{ fontSize: 14, color: "#09090b" }}>{c.title}</strong>
+                        <span style={{ fontSize: 12, color: "#71717a", marginLeft: 8 }}>({c.prompts_count} câu)</span>
+                      </div>
+                      <div style={{ fontSize: 13 }}>
+                        <span style={{ color: "#16a34a", fontWeight: 600 }}>{c.recordings_count} bản ghi đã nộp</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
           )}
 
           {/* SUBTAB: PARTICIPANTS & RECORDINGS */}
