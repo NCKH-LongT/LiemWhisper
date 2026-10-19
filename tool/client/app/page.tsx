@@ -15,6 +15,8 @@ import { DriveStatusResponse } from "../lib/drive";
 import { downloadAuthenticatedExport } from "../lib/auth-fetch";
 import { AdminDrivePanel } from "../components/AdminDrivePanel";
 import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
+import { AdminParticipantsPanel } from "../components/AdminParticipantsPanel";
+import { AdminQuestionsPanel } from "../components/AdminQuestionsPanel";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -287,7 +289,7 @@ export default function Home() {
 
   // Admin state (Memory only, never persisted to localStorage)
   const [adminKey, setAdminKey] = useState("");
-  const [adminSubTab, setAdminSubTab] = useState<"stats" | "prompts" | "admins" | "export">("stats");
+  const [adminSubTab, setAdminSubTab] = useState<"stats" | "participants" | "questions" | "prompts" | "admins" | "export">("stats");
   const [isGoogleAdmin, setIsGoogleAdmin] = useState(false);
   const [adminUsersList, setAdminUsersList] = useState<Array<{ email: string; created_at: number; created_by: string; linked: boolean; name: string; is_env: boolean }>>([]);
   const [adminParticipantsList, setAdminParticipantsList] = useState<Array<{ id: string; participant_code: string; email: string; name: string; is_admin?: number }>>([]);
@@ -2416,13 +2418,45 @@ export default function Home() {
                     fontWeight: 600,
                     cursor: "pointer",
                     fontSize: 13,
+                    background: adminSubTab === "participants" ? "#ffffff" : "transparent",
+                    color: adminSubTab === "participants" ? "#09090b" : "#71717a",
+                    boxShadow: adminSubTab === "participants" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
+                  }}
+                  onClick={() => setAdminSubTab("participants")}
+                >
+                  DS Người dùng & Audio
+                </button>
+                <button
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    background: adminSubTab === "questions" ? "#ffffff" : "transparent",
+                    color: adminSubTab === "questions" ? "#09090b" : "#71717a",
+                    boxShadow: adminSubTab === "questions" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
+                  }}
+                  onClick={() => { setAdminSubTab("questions"); loadAdminCourses(); }}
+                >
+                  DS Câu hỏi & Audio
+                </button>
+                <button
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontSize: 13,
                     background: adminSubTab === "prompts" ? "#ffffff" : "transparent",
                     color: adminSubTab === "prompts" ? "#09090b" : "#71717a",
                     boxShadow: adminSubTab === "prompts" ? "0 1px 2px rgba(0,0,0,0.06)" : "none"
                   }}
                   onClick={() => { setAdminSubTab("prompts"); loadAdminCourses(); }}
                 >
-                  Quản lý câu hỏi
+                  Tạo & Nhập câu hỏi
                 </button>
                 <button
                   style={{
@@ -2520,6 +2554,23 @@ export default function Home() {
                 ))}
               </div>
             </section>
+          )}
+
+          {/* SUBTAB: PARTICIPANTS & RECORDINGS */}
+          {adminSubTab === "participants" && (
+            <AdminParticipantsPanel
+              apiBase={API}
+              adminKey={adminKey || getAdminSession() || ""}
+            />
+          )}
+
+          {/* SUBTAB: QUESTIONS & RECORDINGS */}
+          {adminSubTab === "questions" && (
+            <AdminQuestionsPanel
+              apiBase={API}
+              adminKey={adminKey || getAdminSession() || ""}
+              courses={adminCourses}
+            />
           )}
 
           {/* SUBTAB 2: PROMPTS & COURSES MANAGEMENT */}

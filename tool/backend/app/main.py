@@ -500,6 +500,50 @@ def delete_prompt(prompt_id: str, x_admin_key: str | None = Header(None), key: s
     return {"deleted": True, "id": prompt_id}
 
 
+@app.get("/api/v1/admin/prompts")
+def admin_list_prompts(
+    course_id: str | None = None,
+    search: str | None = None,
+    x_admin_key: str | None = Header(None),
+    key: str | None = Query(None)
+):
+    """Retrieve all prompts across courses with count of submitted recordings."""
+    admin(x_admin_key, key)
+    with db() as c:
+        query = """
+            SELECT p.id, p.course_id, p.text, p.target_terms, p.language, p.difficulty, p.category, p.published, p.created_at,
+                   c.title AS course_title,
+                   COUNT(r.id) AS recordings_count
+            FROM prompts p
+            LEFT JOIN courses c ON c.id = p.course_id
+            LEFT JOIN recordings r ON r.prompt_id = p.id
+        """
+        where_clauses = []
+        params = []
+        if course_id:
+            where_clauses.append("p.course_id = ?")
+            params.append(course_id)
+        if search and search.strip():
+            where_clauses.append("p.text LIKE ?")
+            params.append(f"%{search.strip()}%")
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        query += """
+            GROUP BY p.id, p.course_id, p.text, p.target_terms, p.language, p.difficulty, p.category, p.published, p.created_at, c.title
+            ORDER BY c.title ASC, p.created_at ASC, p.id ASC
+        """
+        rows = c.execute(query, params).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["target_terms"] = json.loads(d["target_terms"]) if d["target_terms"] else []
+            except Exception:
+                d["target_terms"] = []
+            result.append(d)
+        return result
+
+
 # ----------------- Admin Gmail & Role Management -----------------
 
 class AdminEmailInput(BaseModel):
@@ -544,16 +588,35 @@ def admin_delete_admin(email: str, x_admin_key: str | None = Header(None), key: 
 
 
 @app.get("/api/v1/admin/participants")
-def admin_get_participants(x_admin_key: str | None = Header(None), key: str | None = Query(None)):
-    """Retrieve recent participants with their email and admin status."""
+def admin_get_participants(
+    search: str | None = None,
+    limit: int = 500,
+    x_admin_key: str | None = Header(None),
+    key: str | None = Query(None)
+):
+    """Retrieve participants with statistics, counts, email and admin status."""
     admin(x_admin_key, key)
     with db() as c:
-        rows = c.execute("""
-            SELECT id, participant_code, email, name, onboarded, consent_at, is_admin
-            FROM participants
-            ORDER BY consent_at DESC
-            LIMIT 50
-        """).fetchall()
+        query = """
+            SELECT p.id, p.participant_code, p.email, p.name, p.onboarded, p.consent_at, p.completed_at, p.is_admin, p.drive_folder_id,
+                   COUNT(r.id) AS recordings_count,
+                   COALESCE(SUM(r.duration_seconds), 0.0) AS total_duration_seconds
+            FROM participants p
+            LEFT JOIN recordings r ON r.participant_id = p.id
+        """
+        params = []
+        if search and search.strip():
+            s = f"%{search.strip()}%"
+            query += " WHERE (p.participant_code LIKE ? OR p.name LIKE ? OR p.email LIKE ?)"
+            params.extend([s, s, s])
+        query += """
+            GROUP BY p.id, p.participant_code, p.email, p.name, p.onboarded, p.consent_at, p.completed_at, p.is_admin, p.drive_folder_id
+            ORDER BY p.consent_at DESC
+        """
+        if limit > 0:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = c.execute(query, params).fetchall()
         return {
             "status": "success",
             "participants": [dict(r) for r in rows]
@@ -1070,15 +1133,18 @@ def participant_audio_stream(
 @app.get("/api/v1/admin/recordings")
 def admin_recordings_queue(
     course_id: str | None = None,
+    participant_id: str | None = None,
+    prompt_id: str | None = None,
     status: str | None = None,
-    limit: int = 200,
+    limit: int = 500,
     x_admin_key: str | None = Header(None),
     key: str | None = Query(None)
 ):
     admin(x_admin_key, key)
     query = """
-        SELECT r.id, r.prompt_id, p.text, p.target_terms, p.language, c.title AS course_title,
-               part.participant_code, r.status, r.transcript, r.reviewer_notes,
+        SELECT r.id, r.participant_id, r.prompt_id, p.course_id, p.text, p.target_terms, p.language, c.title AS course_title,
+               part.participant_code, part.name AS participant_name, part.email AS participant_email,
+               r.status, r.transcript, r.reviewer_notes,
                r.duration_seconds, r.bytes, r.mime, r.format, r.created_at, r.reviewed_at,
                r.drive_sync_status, r.drive_file_id
         FROM recordings r
@@ -1091,11 +1157,24 @@ def admin_recordings_queue(
     if course_id:
         query += " AND p.course_id = ?"
         params.append(course_id)
+    if participant_id:
+        query += " AND r.participant_id = ?"
+        params.append(participant_id)
+    if prompt_id:
+        query += " AND r.prompt_id = ?"
+        params.append(prompt_id)
     if status and status != "all":
         query += " AND r.status = ?"
         params.append(status)
-    query += " ORDER BY r.created_at DESC LIMIT ?"
-    params.append(limit)
+
+    if participant_id:
+        query += " ORDER BY p.created_at ASC, p.id ASC, r.created_at ASC"
+    else:
+        query += " ORDER BY r.created_at DESC"
+
+    if limit > 0:
+        query += " LIMIT ?"
+        params.append(limit)
 
     with db() as c:
         rows = c.execute(query, params).fetchall()
