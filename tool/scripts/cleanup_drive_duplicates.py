@@ -119,11 +119,73 @@ def cleanup_drive(dry_run: bool = True) -> None:
         print(f"\n[Kết quả Thư mục] Phát hiện {duplicate_folders_count} nhóm thư mục trùng lặp. "
               f"{'Đã gộp và xóa ' + str(deleted_folders_count) + ' thư mục phụ.' if not dry_run else 'Sẽ gộp khi chạy không có --dry-run.'}\n")
 
-    # 2. Quét và xử lý file audio trùng lặp trong từng thư mục
-    print("--- 2. XỬ LÝ TRÙNG LẶP FILE AUDIO ---")
+    # 2. Xử lý trùng lặp trong cơ sở dữ liệu
+    print("--- 2. XỬ LÝ TRÙNG LẶP TRONG CƠ SỞ DỮ LIỆU ---")
+    db_duplicates_removed = 0
+    drive_files_to_delete_from_db = set()
+    with db() as c:
+        dup_prompt_rows = c.execute("""
+            SELECT participant_id, prompt_id, COUNT(*) as cnt
+            FROM recordings
+            GROUP BY participant_id, prompt_id
+            HAVING COUNT(*) > 1
+        """).fetchall()
+
+        for dup in dup_prompt_rows:
+            p_id, pr_id = dup["participant_id"], dup["prompt_id"]
+            all_recs = c.execute("""
+                SELECT id, drive_file_id, bytes, created_at
+                FROM recordings
+                WHERE participant_id = ? AND prompt_id = ?
+                ORDER BY created_at DESC, id DESC
+            """, (p_id, pr_id)).fetchall()
+
+            primary_rec = None
+            for r in all_recs:
+                if r["drive_file_id"]:
+                    primary_rec = r
+                    break
+            if not primary_rec:
+                primary_rec = all_recs[0]
+
+            for r in all_recs:
+                if r["id"] != primary_rec["id"]:
+                    dup_rec_id = r["id"]
+                    dup_file_id = r["drive_file_id"]
+                    if dup_file_id and dup_file_id != primary_rec["drive_file_id"]:
+                        drive_files_to_delete_from_db.add(dup_file_id)
+
+                    if not dry_run:
+                        c.execute("DELETE FROM recording_audio WHERE recording_id = ?", (dup_rec_id,))
+                        c.execute("DELETE FROM drive_sync_jobs WHERE recording_id = ?", (dup_rec_id,))
+                        c.execute("DELETE FROM recordings WHERE id = ?", (dup_rec_id,))
+                    db_duplicates_removed += 1
+
+    if db_duplicates_removed == 0:
+        print("[v] CSDL không có bản ghi trùng lặp (mỗi câu chỉ có đúng 1 bản thu).")
+    else:
+        print(f"[!] Phát hiện {db_duplicates_removed} bản ghi trùng lặp trong CSDL.")
+        if not dry_run:
+            print(f"    [v] Đã xóa {db_duplicates_removed} bản ghi thừa trong CSDL.")
+
+    # 3. Quét và xử lý file audio trùng lặp trong từng thư mục
+    print("\n--- 3. XỬ LÝ TRÙNG LẶP FILE AUDIO TRÊN DRIVE ---")
+    import re
     duplicate_files_count = 0
     deleted_files_count = 0
     updated_db_records = 0
+
+    active_db_drive_ids = set()
+    with db() as c:
+        for row in c.execute("SELECT drive_file_id FROM recordings WHERE drive_file_id IS NOT NULL AND drive_file_id != ''").fetchall():
+            active_db_drive_ids.add(row["drive_file_id"])
+
+    def extract_prompt_key(fname: str) -> str:
+        m = re.match(r"^([A-Za-z0-9_-]+?(?:_Cau\d+|_SWT_\d+|_P\d+))", fname, re.IGNORECASE)
+        if m:
+            return m.group(1).lower()
+        clean = re.sub(r"\s*\(\d+\)", "", fname)
+        return clean.lower()
 
     folders_to_check = all_active_folders + [{"id": root_id, "name": "[Root Folder]"}]
 
@@ -135,48 +197,57 @@ def cleanup_drive(dry_run: bool = True) -> None:
         if not files:
             continue
 
-        files_by_name = defaultdict(list)
-        for f in files:
-            files_by_name[f["name"]].append(f)
+        audio_files = [f for f in files if not f["name"].lower().endswith(".csv")]
 
-        for filename, flist in files_by_name.items():
+        files_by_key = defaultdict(list)
+        for f in audio_files:
+            key = extract_prompt_key(f["name"])
+            files_by_key[key].append(f)
+
+        for prompt_key, flist in files_by_key.items():
             if len(flist) > 1:
                 duplicate_files_count += len(flist) - 1
-                print(f"[!] Thư mục '{fname}': Phát hiện {len(flist)} bản sao của file '{filename}'")
+                print(f"[!] Thư mục '{fname}': Phát hiện {len(flist)} bản sao của câu '{prompt_key}'")
 
-                # Sắp xếp để giữ lại file tốt nhất (có size lớn nhất hoặc tạo sớm nhất)
-                flist_sorted = sorted(flist, key=lambda x: (int(x.get("size") or 0) > 0, x.get("createdTime", "")), reverse=True)
+                flist_sorted = sorted(
+                    flist,
+                    key=lambda x: (
+                        1 if x["id"] in active_db_drive_ids else 0,
+                        int(x.get("size") or 0) > 0,
+                        x.get("createdTime", "")
+                    ),
+                    reverse=True
+                )
                 primary_file = flist_sorted[0]
                 redundant_files = flist_sorted[1:]
 
-                print(f"    => Giữ lại bản chính: ID {primary_file['id']} (size: {primary_file.get('size', 0)} bytes)")
+                print(f"    => Giữ lại bản chính: ID {primary_file['id']} - {primary_file['name']} (size: {primary_file.get('size', 0)} bytes)")
 
                 if not dry_run:
-                    # Cập nhật trong DB để recordings trỏ vào file chính
                     kept_id = primary_file["id"]
                     for dup in redundant_files:
                         dup_id = dup["id"]
-                        with db() as c:
-                            c.execute(
-                                "UPDATE recordings SET drive_file_id = ? WHERE drive_file_id = ?",
-                                (kept_id, dup_id)
-                            )
-                            c.execute(
-                                "UPDATE drive_sync_jobs SET drive_file_id = ? WHERE drive_file_id = ?",
-                                (kept_id, dup_id)
-                            )
-                        # Xóa bản copy thừa trên Drive
-                        print(f"    [*] Đang xóa bản sao thừa: ID {dup_id}")
-                        try:
-                            drive.delete(dup_id)
-                            deleted_files_count += 1
-                        except Exception as e:
-                            print(f"    [!] Lỗi khi xóa file {dup_id}: {e}")
+                        if dup_id != kept_id:
+                            with db() as c:
+                                c.execute(
+                                    "UPDATE recordings SET drive_file_id = ? WHERE drive_file_id = ?",
+                                    (kept_id, dup_id)
+                                )
+                                c.execute(
+                                    "UPDATE drive_sync_jobs SET drive_file_id = ? WHERE drive_file_id = ?",
+                                    (kept_id, dup_id)
+                                )
+                            print(f"    [*] Đang xóa bản sao thừa: ID {dup_id} - {dup['name']}")
+                            try:
+                                drive.delete(dup_id)
+                                deleted_files_count += 1
+                            except Exception as e:
+                                print(f"    [!] Lỗi khi xóa file {dup_id}: {e}")
 
                     updated_db_records += 1
 
     if duplicate_files_count == 0:
-        print("[v] Không tìm thấy file audio trùng lặp nào.")
+        print("[v] Không tìm thấy file audio trùng lặp nào trên Drive.")
     else:
         print(f"\n[Kết quả File Audio] Phát hiện {duplicate_files_count} file audio bị trùng.")
         if not dry_run:

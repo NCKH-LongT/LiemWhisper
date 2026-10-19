@@ -411,3 +411,90 @@ def test_duplicate_prevention_and_folder_caching(tmp_path, monkeypatch):
     enqueued = backfill_unsynced_drive_jobs(main.db)
     assert enqueued == 0
 
+
+def test_drive_cleanup_duplicates(tmp_path, monkeypatch):
+    main, client, course, prompt1, prompt2, _ = setup_drive_app(tmp_path, monkeypatch)
+    fake_drive = FakeDriveClient()
+    fake_drive.folder_id = "root-folder-123"
+    monkeypatch.setattr("app.drive.get_drive_client", lambda db: fake_drive)
+    with main.db() as c:
+        c.execute(
+            "INSERT INTO drive_connection (id, account_id, account_email, refresh_token_enc, folder_id, created_at, updated_at) "
+            "VALUES ('default', 'fake-acc', 'fake@gmail.com', 'fake-tok', 'root-folder-123', 100, 100) "
+            "ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id"
+        )
+
+    # 2. Register participant
+    reg = client.post("/api/v1/participants", json={
+        "consent": True,
+        "participant_code": "SE123456",
+        "name": "Ngo Gia Huy",
+        "email": "huy@example.com",
+        "course_id": course
+    }).json()
+    token = {"x-participant-token": reg["participant_token"]}
+    pid = reg["participant_id"]
+
+    # 3. Simulate 2 duplicate folders on Drive
+    fake_drive.files["f-folder-1"] = {
+        "name": "SE123456 - Ngo Gia Huy",
+        "mime": "application/vnd.google-apps.folder",
+        "parent": "root-folder-123",
+        "createdTime": "2026-10-01T00:00:00Z"
+    }
+    fake_drive.files["f-folder-2"] = {
+        "name": "SE123456 - Ngo Gia Huy",
+        "mime": "application/vnd.google-apps.folder",
+        "parent": "root-folder-123",
+        "createdTime": "2026-10-02T00:00:00Z"
+    }
+
+    # Simulate files in both folders
+    fake_drive.files["audio-take-1"] = {
+        "name": "SE123456_Cau01_old111.webm",
+        "mime": "audio/webm",
+        "parent": "f-folder-1",
+        "size": 1000,
+        "createdTime": "2026-10-01T01:00:00Z"
+    }
+    fake_drive.files["audio-take-2"] = {
+        "name": "SE123456_Cau01_new222.webm",
+        "mime": "audio/webm",
+        "parent": "f-folder-2",
+        "size": 2000,
+        "createdTime": "2026-10-02T01:00:00Z"
+    }
+
+    # 4. Insert recording row in DB pointing to audio-take-2
+    with main.db() as c:
+        c.execute("""
+            INSERT INTO recordings (id, participant_id, prompt_id, duration_seconds, bytes, format, mime, status, created_at, drive_file_id, storage_key, sha256)
+            VALUES ('rec-latest', ?, ?, 4.0, 2000, 'webm', 'audio/webm', 'approved', 2000, 'audio-take-2', 'sql://rec-latest', 'sha-latest')
+        """, (pid, prompt1))
+
+    # 5. Trigger cleanup
+    res = client.post("/api/v1/admin/drive/cleanup-duplicates", headers=ADMIN)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert data["merged_folders_count"] == 1
+    assert data["deleted_folders_count"] == 1
+    assert data["deleted_files_count"] >= 1
+
+    # Check that redundant folder was deleted from fake drive
+    assert "f-folder-2" not in fake_drive.files
+    # Check that surviving folder is primary folder
+    assert "f-folder-1" in fake_drive.files
+    # Check that duplicate file was deleted and primary file was kept
+    assert "audio-take-1" not in fake_drive.files
+    assert "audio-take-2" in fake_drive.files
+
+    # Check participant drive_folder_id in DB
+    with main.db() as c:
+        p_row = c.execute("SELECT drive_folder_id FROM participants WHERE id=?", (pid,)).fetchone()
+        assert p_row["drive_folder_id"] == "f-folder-1"
+
+        # Check DB recordings count for this prompt is strictly 1
+        rec_cnt = c.execute("SELECT count(*) FROM recordings WHERE participant_id=? AND prompt_id=?", (pid, prompt1)).fetchone()[0]
+        assert rec_cnt == 1
+

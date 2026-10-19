@@ -56,10 +56,52 @@ export function AdminDrivePanel({
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [cleanNotice, setCleanNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const statusText = formatDriveStatusText(driveStatus);
+
+  async function handleCleanupDuplicates() {
+    if (!adminToken) return;
+    const confirmed = window.confirm(
+      "Hệ thống sẽ quét Google Drive và CSDL để:\n" +
+      "1. Gộp các thư mục trùng lặp của cùng một sinh viên thành 1 thư mục duy nhất.\n" +
+      "2. Xóa các bản sao audio cũ/thừa, chỉ giữ lại đúng 1 bản thu âm hoàn chỉnh nhất cho mỗi câu.\n" +
+      "3. Xóa các thư mục rỗng và cập nhật lại danh sách mã file.\n\n" +
+      "Bạn có chắc chắn muốn tiến hành dọn dẹp?"
+    );
+    if (!confirmed) return;
+
+    setCleaning(true);
+    setError(null);
+    setCleanNotice(null);
+    setSyncNotice(null);
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/drive/cleanup-duplicates`, {
+        method: "POST",
+        headers: {
+          "x-admin-key": adminToken
+        }
+      });
+      if (!res.ok) {
+        let msg = `Dọn dẹp thất bại (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.detail) msg = body.detail;
+        } catch {}
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      setCleanNotice(data.message || "Đã dọn dẹp bản sao trùng lặp thành công!");
+      refreshStatus();
+    } catch (err) {
+      setError(sanitizeApiError(err));
+    } finally {
+      setCleaning(false);
+    }
+  }
 
   async function handleSyncNow() {
     if (!adminToken) return;
@@ -259,32 +301,56 @@ export function AdminDrivePanel({
 
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {driveStatus?.connected && (
-            <button
-              onClick={handleSyncNow}
-              disabled={syncing || loading}
-              style={{
-                padding: "8px 14px",
-                background: "#16a34a",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)"
-              }}
-            >
-              <RefreshIcon size={13} />
-              <span>{syncing ? "Đang đẩy lên Drive..." : "Đồng bộ Drive ngay"}</span>
-            </button>
+            <>
+              <button
+                onClick={handleSyncNow}
+                disabled={syncing || loading || cleaning}
+                style={{
+                  padding: "8px 14px",
+                  background: "#16a34a",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)"
+                }}
+              >
+                <RefreshIcon size={13} />
+                <span>{syncing ? "Đang đẩy lên Drive..." : "Đồng bộ Drive ngay"}</span>
+              </button>
+
+              <button
+                onClick={handleCleanupDuplicates}
+                disabled={cleaning || syncing || loading}
+                title="Quét gộp folder học viên bị trùng và xóa các bản thu thừa"
+                style={{
+                  padding: "8px 14px",
+                  background: "#0284c7",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)"
+                }}
+              >
+                <span>{cleaning ? "Đang dọn dẹp..." : "🧹 Dọn dẹp bản sao trùng lặp"}</span>
+              </button>
+            </>
           )}
 
           <button
             onClick={refreshStatus}
-            disabled={loading || connecting || syncing}
+            disabled={loading || connecting || syncing || cleaning}
             style={{
               padding: "8px 14px",
               background: "#ffffff",
@@ -305,7 +371,7 @@ export function AdminDrivePanel({
 
           <button
             onClick={handleConnect}
-            disabled={connecting || loading || syncing || Boolean(driveStatus && !driveStatus.configured)}
+            disabled={connecting || loading || syncing || cleaning || Boolean(driveStatus && !driveStatus.configured)}
             title={driveStatus && !driveStatus.configured ? "Chưa cấu hình Client ID / Secret trên máy chủ" : ""}
             style={{
               padding: "8px 14px",
@@ -348,6 +414,23 @@ export function AdminDrivePanel({
           }}
         >
           ✓ {syncNotice}
+        </div>
+      )}
+
+      {cleanNotice && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "8px 12px",
+            background: "#f0f9ff",
+            border: "1px solid #bae6fd",
+            color: "#0369a1",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 500
+          }}
+        >
+          ✓ {cleanNotice}
         </div>
       )}
 
