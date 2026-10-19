@@ -810,15 +810,23 @@ export default function Home() {
     const barWidth = canvas.width / 24;
     let x = 0;
 
+    // Cache fill color once per frame instead of querying computed style 24 times inside loop
+    const barFill = isRecording ? "#ef4444" : "#64748b";
+    ctx.fillStyle = barFill;
+
     for (let i = 0; i < 24; i++) {
       const idx = Math.floor((i * bufferLength) / 24);
       const val = dataArray[idx] || 0;
       const barHeight = Math.max(3, (val / 255) * canvas.height);
       const y = (canvas.height - barHeight) / 2;
 
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(isRecording ? "--danger" : "--primary").trim();
       ctx.beginPath();
-      ctx.roundRect(x, y, barWidth - 3, barHeight, 2);
+      const bw = Math.max(1, barWidth - 3);
+      if (typeof (ctx as any).roundRect === "function") {
+        (ctx as any).roundRect(x, y, bw, barHeight, 2);
+      } else {
+        ctx.rect(x, y, bw, barHeight);
+      }
       ctx.fill();
 
       x += barWidth;
@@ -845,6 +853,9 @@ export default function Home() {
 
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioCtx();
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
       audioContextRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();

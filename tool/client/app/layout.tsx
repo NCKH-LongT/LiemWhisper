@@ -1,5 +1,17 @@
 import "./globals.css";
 import type { ReactNode } from "react";
+import type { Viewport } from "next";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafaf9" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0a09" },
+  ],
+};
 
 export const metadata = {
   title: "LiemWhisper — Nền tảng Thu thập Ngữ liệu Giọng nói",

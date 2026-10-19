@@ -108,14 +108,16 @@ tbody tr:hover{background:var(--subtle)}
 @media(min-width:1280px){.duration-kpis>div>div:nth-child(2){font-size:32px!important}
 }
 
-@media(max-width:767px){.app-shell{padding:0 16px 24px}
-.app-header{flex-wrap:wrap;gap:8px;padding:12px 0}
+@media(max-width:767px){.app-shell{padding:0 16px 24px;padding-bottom:max(24px,env(safe-area-inset-bottom))}
+.app-header{flex-wrap:wrap;gap:8px;padding:12px 0;padding-top:max(12px,env(safe-area-inset-top))}
 .app-header>div:last-child{gap:6px!important}
 .app-header button{font-size:12px!important}
+button{min-height:44px}
+input,select,textarea{font-size:16px!important}
 .page-intro{padding:32px 0 24px}
 .page-intro h1{font-size:28px}
 .duration-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-.duration-table{max-height:none}
+.duration-table{max-height:none;-webkit-overflow-scrolling:touch}
 .duration-table table{min-width:0}
 .duration-table thead{display:none}
 .duration-table tbody,.duration-table tr,.duration-table td{display:block;width:100%}
