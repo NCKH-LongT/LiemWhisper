@@ -827,6 +827,21 @@ def participant_complete(
         row = c.execute("SELECT id, participant_code, email, name, completed_at FROM participants WHERE id=?", (pid,)).fetchone()
         if not row:
             raise HTTPException(404, "Participant not found")
+
+        # Anti-spam: If session is already completed, do not re-dispatch email or overwrite timestamp
+        if row.get("completed_at"):
+            recs_count = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()["count"]
+            return {
+                "status": "success",
+                "completed": True,
+                "already_completed": True,
+                "completed_at": row["completed_at"],
+                "total_recordings": recs_count,
+                "email": (row.get("email") or "").strip(),
+                "email_delivery": {"already_sent": True, "sent": True, "simulated": False},
+                "message": "Bài thi của bạn đã được xác nhận hoàn thành trước đó."
+            }
+
         recs_count = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()["count"]
         c.execute("UPDATE participants SET completed_at=? WHERE id=?", (now, pid))
 
@@ -926,6 +941,9 @@ async def upload_recording(
     validate_storage_backend(STORAGE)
     pid = participant(x_participant_token, token)
     with db() as c:
+        part_row = c.execute("SELECT completed_at FROM participants WHERE id=?", (pid,)).fetchone()
+        if part_row and part_row.get("completed_at"):
+            raise HTTPException(403, "Bài thi đã hoàn thành, không thể nộp thêm hoặc sửa đổi bản ghi âm.")
         if not c.execute("SELECT 1 FROM prompts WHERE id=? AND published=1", (prompt_id,)).fetchone():
             raise HTTPException(404, "Prompt unavailable")
         if c.execute("SELECT 1 FROM recordings WHERE prompt_id=? AND participant_id=?", (prompt_id, pid)).fetchone():

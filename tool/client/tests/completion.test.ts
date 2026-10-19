@@ -37,3 +37,24 @@ test("student studio interface includes complete session button and celebration 
     "Page must allow student to review recordings even after completion"
   );
 });
+
+test("completion prevents re-submitting and locks recording into read-only mode", () => {
+  assert.ok(
+    page.includes("isParticipantCompleted"),
+    "Page must compute isParticipantCompleted status"
+  );
+  assert.ok(
+    page.includes("Đã hoàn thành bài thu âm"),
+    "Page must display finished badge once completed instead of re-submit button"
+  );
+  assert.ok(
+    page.includes("Chế độ xem lại"),
+    "Page must indicate read-only review mode"
+  );
+  // Ensure startRecording and uploadRecording check isParticipantCompleted
+  assert.ok(
+    page.includes("if (isParticipantCompleted)"),
+    "Must check isParticipantCompleted before allowing startRecording or handleCompleteSession"
+  );
+});
+

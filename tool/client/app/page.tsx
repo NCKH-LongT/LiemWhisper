@@ -275,6 +275,10 @@ export default function Home() {
   const [recordedDuration, setRecordedDuration] = useState(0);
   const [isCompletedSession, setIsCompletedSession] = useState(false);
   const [completionDetails, setCompletionDetails] = useState<{ total: number; email: string } | null>(null);
+  const isParticipantCompleted = Boolean(
+    (participantInfo?.completed_at && participantInfo.completed_at > 0) ||
+    completionDetails
+  );
 
   // Status & loading
   const [busy, setBusy] = useState(false);
@@ -671,6 +675,11 @@ export default function Home() {
   }
 
   async function handleCompleteSession() {
+    if (isParticipantCompleted) {
+      setIsCompletedSession(true);
+      return;
+    }
+
     const recordedCount = tasks.filter((t) => Boolean(t.recording_id)).length;
     if (recordedCount === 0) {
       alertError("Bạn chưa thu âm câu nào. Vui lòng ghi âm ít nhất một câu trước khi hoàn thành.");
@@ -698,6 +707,9 @@ export default function Home() {
         total: res.total_recordings || recordedCount,
         email: res.email || email
       });
+      setParticipantInfo((prev) =>
+        prev ? { ...prev, completed_at: res.completed_at || Math.floor(Date.now() / 1000) } : prev
+      );
       setNotice("Chúc mừng bạn đã hoàn tất bài thi! Thư cảm ơn đã được gửi đến email của bạn.");
     } catch (e) {
       alertError(e);
@@ -792,6 +804,10 @@ export default function Home() {
   }
 
   async function startRecording(taskId: string) {
+    if (typeof isParticipantCompleted !== "undefined" && isParticipantCompleted) {
+      alertError("Bài thi đã hoàn thành. Bạn đang ở chế độ xem lại nên không thể ghi âm thêm.");
+      return;
+    }
     clearRecordedAudio();
     setError("");
     setNotice("");
@@ -871,6 +887,10 @@ export default function Home() {
   }
 
   async function uploadRecording(taskId: string) {
+    if (typeof isParticipantCompleted !== "undefined" && isParticipantCompleted) {
+      setError("Bài thi đã hoàn thành. Bạn không thể nộp thêm hoặc sửa đổi bản ghi âm.");
+      return;
+    }
     if (!recordedBlob || recordedFor !== taskId) {
       setError("Bản ghi âm không khớp với câu hiện tại.");
       return;
@@ -1819,30 +1839,75 @@ export default function Home() {
                   </div>
                 </div>
 
-                {completedCount > 0 && (
-                  <button
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: completedCount === tasks.length ? "#16a34a" : "#0f172a",
-                      color: "#ffffff",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      boxShadow: completedCount === tasks.length ? "0 2px 6px rgba(22, 163, 74, 0.3)" : "none",
-                      transition: "all 0.15s ease"
-                    }}
-                    disabled={busy || isRecording}
-                    onClick={handleCompleteSession}
-                    title="Nộp và kết thúc bài thu âm để nhận thư cảm ơn"
-                  >
-                    <CheckIcon size={14} color="#ffffff" />
-                    <span>Hoàn thành bài thu âm</span>
-                  </button>
+                {isParticipantCompleted ? (
+                  isCompletedSession ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: "#dcfce7",
+                        color: "#166534",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        border: "1px solid #86efac"
+                      }}
+                    >
+                      <CheckIcon size={14} color="#166534" />
+                      <span>Đã hoàn thành bài thu âm</span>
+                    </div>
+                  ) : (
+                    <button
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: "#16a34a",
+                        color: "#ffffff",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 6px rgba(22, 163, 74, 0.3)",
+                        transition: "all 0.15s ease"
+                      }}
+                      onClick={() => setIsCompletedSession(true)}
+                      title="Xem lại thư cảm ơn và xác nhận hoàn thành"
+                    >
+                      <CheckIcon size={14} color="#ffffff" />
+                      <span>Xem thư cảm ơn / Kết quả</span>
+                    </button>
+                  )
+                ) : (
+                  completedCount > 0 && (
+                    <button
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: completedCount === tasks.length ? "#16a34a" : "#0f172a",
+                        color: "#ffffff",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        boxShadow: completedCount === tasks.length ? "0 2px 6px rgba(22, 163, 74, 0.3)" : "none",
+                        transition: "all 0.15s ease"
+                      }}
+                      disabled={busy || isRecording}
+                      onClick={handleCompleteSession}
+                      title="Nộp và kết thúc bài thu âm để nhận thư cảm ơn"
+                    >
+                      <CheckIcon size={14} color="#ffffff" />
+                      <span>Hoàn thành bài thu âm</span>
+                    </button>
+                  )
                 )}
               </div>
             </div>
@@ -1923,6 +1988,11 @@ export default function Home() {
                       Chưa ghi âm
                     </span>
                   )}
+                  {isParticipantCompleted && (
+                    <span style={{ fontSize: 12, background: "#eff6ff", color: "#1d4ed8", padding: "2px 8px", borderRadius: 4, fontWeight: 600, border: "1px solid #bfdbfe" }}>
+                      🔒 Chế độ xem lại
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: 6 }}>
@@ -1950,6 +2020,52 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+
+              {/* Review Mode Banner when Session is Completed */}
+              {isParticipantCompleted && (
+                <div
+                  style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    marginBottom: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    fontSize: 13,
+                    color: "#166534"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <CheckIcon size={16} color="#16a34a" />
+                    <span>
+                      <strong>Bài thi đã hoàn thành:</strong> Bạn đang ở chế độ xem lại. Bạn có thể nghe lại các bản thu âm nhưng không thể ghi âm thêm hoặc nộp lại bài.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      background: "#16a34a",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "5px 12px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4
+                    }}
+                    onClick={() => setIsCompletedSession(true)}
+                  >
+                    <span>Xem thư cảm ơn</span>
+                  </button>
+                </div>
+              )}
 
               {/* PROMPT TEXT DISPLAY */}
               {(() => {
@@ -2061,43 +2177,71 @@ export default function Home() {
 
               {/* RECORDING & PLAYBACK CONTROLS */}
               <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {!isRecording && !audioUrl && currentTask.recording_id && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
-                      <CheckIcon size={14} color="#166534" />
-                      <span>Bản ghi âm đã lưu cho câu này</span>
-                      {currentTask.duration_seconds ? (
-                        <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
-                          ({currentTask.duration_seconds.toFixed(1)}s)
-                        </span>
-                      ) : null}
+                {isParticipantCompleted ? (
+                  currentTask.recording_id ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
+                        <CheckIcon size={14} color="#166534" />
+                        <span>Bản ghi âm đã nộp của câu này</span>
+                        {currentTask.duration_seconds ? (
+                          <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
+                            ({currentTask.duration_seconds.toFixed(1)}s)
+                          </span>
+                        ) : null}
+                      </div>
+                      <AuthenticatedAudioPlayer
+                        apiBase={API}
+                        audioPath={`/api/v1/recordings/${currentTask.recording_id}/audio`}
+                        authHeader={{ name: "x-participant-token", value: token }}
+                        style={{ width: "100%", maxWidth: 400 }}
+                      />
                     </div>
-                    <AuthenticatedAudioPlayer
-                      apiBase={API}
-                      audioPath={`/api/v1/recordings/${currentTask.recording_id}/audio`}
-                      authHeader={{ name: "x-participant-token", value: token }}
-                      style={{ width: "100%", maxWidth: 400 }}
-                    />
-                    <button
-                      style={{ ...styles.btnSecondary, marginTop: 4 }}
-                      disabled={busy}
-                      onClick={() => startRecording(currentTask.id)}
-                    >
-                      <RefreshIcon size={13} />
-                      <span>Thu âm lại câu này</span>
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <div style={{ padding: "16px 20px", background: "#f8fafc", borderRadius: 8, border: "1px dashed #cbd5e1", color: "#64748b", fontSize: 13, textAlign: "center" }}>
+                      Câu này chưa có bản ghi âm (bạn đã hoàn thành bài thi).
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {!isRecording && !audioUrl && currentTask.recording_id && (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 420 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
+                          <CheckIcon size={14} color="#166534" />
+                          <span>Bản ghi âm đã lưu cho câu này</span>
+                          {currentTask.duration_seconds ? (
+                            <span style={{ fontSize: 12, color: "#71717a", fontWeight: 400 }}>
+                              ({currentTask.duration_seconds.toFixed(1)}s)
+                            </span>
+                          ) : null}
+                        </div>
+                        <AuthenticatedAudioPlayer
+                          apiBase={API}
+                          audioPath={`/api/v1/recordings/${currentTask.recording_id}/audio`}
+                          authHeader={{ name: "x-participant-token", value: token }}
+                          style={{ width: "100%", maxWidth: 400 }}
+                        />
+                        <button
+                          style={{ ...styles.btnSecondary, marginTop: 4 }}
+                          disabled={busy}
+                          onClick={() => startRecording(currentTask.id)}
+                        >
+                          <RefreshIcon size={13} />
+                          <span>Thu âm lại câu này</span>
+                        </button>
+                      </div>
+                    )}
 
-                {!isRecording && !audioUrl && !currentTask.recording_id && (
-                  <button
-                    style={styles.btnRecord}
-                    disabled={busy}
-                    onClick={() => startRecording(currentTask.id)}
-                  >
-                    <MicIcon size={16} />
-                    <span>Bắt đầu ghi âm</span>
-                  </button>
+                    {!isRecording && !audioUrl && !currentTask.recording_id && (
+                      <button
+                        style={styles.btnRecord}
+                        disabled={busy}
+                        onClick={() => startRecording(currentTask.id)}
+                      >
+                        <MicIcon size={16} />
+                        <span>Bắt đầu ghi âm</span>
+                      </button>
+                    )}
+                  </>
                 )}
 
                 {isRecording && (

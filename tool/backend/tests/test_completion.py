@@ -60,3 +60,25 @@ def test_participant_completion_endpoint(tmp_path, monkeypatch):
     # Verify participant_me after completion reflects completed_at
     me_after = client.get("/api/v1/participants/me", headers=headers).json()
     assert me_after["completed_at"] == data["completed_at"]
+
+    # Call complete endpoint again (anti-spam test)
+    res_again = client.post("/api/v1/participants/complete", headers=headers)
+    assert res_again.status_code == 200
+    data_again = res_again.json()
+    assert data_again["status"] == "success"
+    assert data_again["completed"] is True
+    assert data_again.get("already_completed") is True
+    assert data_again["completed_at"] == data["completed_at"]
+    assert data_again["email_delivery"].get("already_sent") is True
+
+    # Attempting to upload recording after completion should be rejected with 403
+    webm_payload = b"\x1a\x45\xdf\xa3" + b"\x00" * 200
+    res_upload = client.post(
+        "/api/v1/recordings",
+        headers=headers,
+        data={"prompt_id": "prompt-1", "duration": 2.0},
+        files={"audio": ("test.webm", webm_payload, "audio/webm")}
+    )
+    assert res_upload.status_code == 403
+    assert "Bài thi đã hoàn thành" in res_upload.json()["detail"]
+
