@@ -14,6 +14,7 @@ interface PromptItem {
   category: string;
   published: number;
   created_at: number;
+  question_number?: number;
   recordings_count: number;
 }
 
@@ -242,8 +243,8 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
                       onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <td style={{ padding: "12px 14px", color: "#64748b", fontWeight: 600 }}>
-                        #{idx + 1}
+                      <td style={{ padding: "12px 14px", color: "#475569", fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {p.question_number ? `Câu ${String(p.question_number).padStart(2, "0")}` : `#${idx + 1}`}
                       </td>
                       <td style={{ padding: "12px 14px" }}>
                         <div style={{ fontWeight: 600, color: "#09090b", lineHeight: 1.45, marginBottom: 4 }}>
@@ -320,7 +321,7 @@ export function AdminQuestionsPanel({ apiBase, adminKey, courses }: AdminQuestio
               <div style={{ flex: 1, paddingRight: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <span style={{ background: "#2563eb", color: "#ffffff", padding: "2px 8px", borderRadius: 4, fontSize: 12, fontWeight: 700 }}>
-                    Câu hỏi
+                    {selectedPrompt.question_number ? `Câu ${String(selectedPrompt.question_number).padStart(2, "0")}` : "Câu hỏi"}
                   </span>
                   <span style={{ color: "#64748b", fontSize: 13, fontWeight: 600 }}>
                     {selectedPrompt.course_title}

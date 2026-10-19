@@ -514,6 +514,7 @@ def delete_prompt(prompt_id: str, x_admin_key: str | None = Header(None), key: s
 def admin_list_prompts(
     course_id: str | None = None,
     search: str | None = None,
+    published_only: bool = True,
     x_admin_key: str | None = Header(None),
     key: str | None = Query(None)
 ):
@@ -530,6 +531,8 @@ def admin_list_prompts(
         """
         where_clauses = []
         params = []
+        if published_only:
+            where_clauses.append("p.published = 1")
         if course_id:
             where_clauses.append("p.course_id = ?")
             params.append(course_id)
@@ -544,8 +547,12 @@ def admin_list_prompts(
         """
         rows = c.execute(query, params).fetchall()
         result = []
+        course_question_counters: dict[str, int] = {}
         for r in rows:
             d = dict(r)
+            cid = d.get("course_id", "")
+            course_question_counters[cid] = course_question_counters.get(cid, 0) + 1
+            d["question_number"] = course_question_counters[cid]
             try:
                 d["target_terms"] = json.loads(d["target_terms"]) if d["target_terms"] else []
             except Exception:
@@ -1299,11 +1306,13 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
         max_dur = dur_stats_row[3] if dur_stats_row else 0.0
 
         # Detailed per-prompt duration statistics (count, total, avg, min, max)
+        # Filter strictly for active published prompts to match student tasks and clean UI
         prompt_stats_rows = c.execute("""
             SELECT p.id as prompt_id,
                    p.text as prompt_text,
                    p.course_id,
                    c.title as course_title,
+                   p.published,
                    COUNT(r.id) as recordings_count,
                    COALESCE(SUM(r.duration_seconds), 0.0) as total_duration_seconds,
                    COALESCE(AVG(CASE WHEN r.duration_seconds > 0 THEN r.duration_seconds ELSE NULL END), 0.0) as avg_duration_seconds,
@@ -1312,17 +1321,23 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
             FROM prompts p
             JOIN courses c ON c.id = p.course_id
             LEFT JOIN recordings r ON r.prompt_id = p.id
-            GROUP BY p.id, p.text, p.course_id, c.title, p.created_at
+            WHERE p.published = 1
+            GROUP BY p.id, p.text, p.course_id, c.title, p.published, p.created_at
             ORDER BY c.title ASC, p.created_at ASC, p.id ASC
         """).fetchall()
 
         prompt_stats = []
+        course_question_counters: dict[str, int] = {}
         for r in prompt_stats_rows:
+            cid = r["course_id"]
+            course_question_counters[cid] = course_question_counters.get(cid, 0) + 1
             prompt_stats.append({
                 "prompt_id": r["prompt_id"],
                 "prompt_text": r["prompt_text"],
                 "course_id": r["course_id"],
                 "course_title": r["course_title"],
+                "published": int(r["published"]) if "published" in r else 1,
+                "question_number": course_question_counters[cid],
                 "recordings_count": int(r["recordings_count"]),
                 "total_duration_seconds": round(float(r["total_duration_seconds"]), 1),
                 "avg_duration_seconds": round(float(r["avg_duration_seconds"]), 1),
@@ -1332,7 +1347,7 @@ def admin_stats(x_admin_key: str | None = Header(None), key: str | None = Query(
 
         course_breakdown = c.execute("""
             SELECT c.id, c.title,
-                   COUNT(DISTINCT p.id) as prompts_count,
+                   COUNT(DISTINCT CASE WHEN p.published = 1 THEN p.id ELSE NULL END) as prompts_count,
                    COUNT(r.id) as recordings_count,
                    SUM(CASE WHEN r.status != 'rejected' THEN 1 ELSE 0 END) as approved_count
             FROM courses c

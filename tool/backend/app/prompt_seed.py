@@ -28,13 +28,19 @@ def sync_swt_prompts(connection_factory, json_path=None, force=False, style="scr
             diagnostic["created_course_id"] = course_id
         diagnostic["course_id"] = course_id
         existing = c.execute(
-            "SELECT id,text,target_terms,category,published FROM prompts WHERE course_id=? ORDER BY created_at ASC,id ASC",
+            "SELECT id,text,target_terms,category,published,created_at FROM prompts WHERE course_id=? ORDER BY created_at ASC,id ASC",
             (course_id,),
         ).fetchall()
         selected = set()
+        selected_ordered = []
         inserted = 0
         changed = False
+
+        # Fixed base timestamp for deterministic 1..15 ordering across all queries and systems
+        base_order_time = 1700000000
+
         for index, item in enumerate(items):
+            expected_created_at = base_order_time + index * 60
             question = item.get("question", "").strip().replace(";", ",")
             answer = (item.get("reading_script") or item.get("answer", "")).strip().replace(";", ",")
             if style == "qa":
@@ -57,25 +63,69 @@ def sync_swt_prompts(connection_factory, json_path=None, force=False, style="scr
             )), None)
             if match:
                 prompt_id = match["id"]
-                if force or match["text"] != text or match["target_terms"] != terms or match["category"] != category or match["published"] != 1:
+                needs_update = (
+                    force
+                    or match["text"] != text
+                    or match["target_terms"] != terms
+                    or match["category"] != category
+                    or match["published"] != 1
+                    or match["created_at"] != expected_created_at
+                )
+                if needs_update:
                     c.execute(
                         "UPDATE prompts SET text=?,target_terms=?,category=?,published=1,created_at=? WHERE id=?",
-                        (text, terms, category, now + index, prompt_id),
+                        (text, terms, category, expected_created_at, prompt_id),
                     )
                     changed = True
             else:
                 prompt_id = stable_id
                 c.execute(
                     "INSERT INTO prompts(id,course_id,text,language,target_terms,difficulty,category,published,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (prompt_id, course_id, text, "vi-en", terms, "normal", category, 1, now + index),
+                    (prompt_id, course_id, text, "vi-en", terms, "normal", category, 1, expected_created_at),
                 )
                 inserted += 1
                 changed = True
+
+            # Consolidate and re-link any recordings from older/duplicate versions of this question
+            q_clean = question.replace(";", ",")
+            retired_matches = [
+                row for row in existing
+                if row["id"] != prompt_id and row["id"] not in selected and (
+                    row["id"] == stable_id
+                    or row["text"].startswith(f"Câu hỏi: {q_clean}")
+                    or row["text"].startswith(f"Hỏi: {q_clean}")
+                    or q_clean in row["text"]
+                )
+            ]
+            for ret in retired_matches:
+                old_id = ret["id"]
+                # 1. Migrate recordings where participant hasn't already recorded prompt_id
+                c.execute("""
+                    UPDATE recordings
+                    SET prompt_id = ?
+                    WHERE prompt_id = ?
+                      AND participant_id NOT IN (
+                          SELECT participant_id FROM recordings WHERE prompt_id = ?
+                      )
+                """, (prompt_id, old_id, prompt_id))
+                # 2. If participant recorded both, delete the conflicting duplicate on old_id
+                c.execute("DELETE FROM recordings WHERE prompt_id = ?", (old_id,))
+                # 3. Ensure the retired prompt is marked unpublished
+                c.execute("UPDATE prompts SET published=0 WHERE id=?", (old_id,))
+                changed = True
+
             selected.add(prompt_id)
+            selected_ordered.append(prompt_id)
+
+        # Mark any other prompts in the course not selected as unpublished (published=0)
         for row in existing:
             if row["id"] not in selected and row["published"]:
-                # Keep the row and all recording foreign keys for review/export.
                 c.execute("UPDATE prompts SET published=0 WHERE id=?", (row["id"],))
                 changed = True
-        diagnostic.update(status="seeded" if changed else "already_seeded", inserted=inserted, existing_prompts=len(selected))
+
+        diagnostic.update(
+            status="seeded" if changed else "already_seeded",
+            inserted=inserted,
+            existing_prompts=len(selected)
+        )
     return diagnostic

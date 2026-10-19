@@ -7,6 +7,8 @@ export interface PromptDurationStat {
   prompt_text: string;
   course_id: string;
   course_title: string;
+  question_number?: number;
+  published?: number;
   recordings_count: number;
   total_duration_seconds: number;
   avg_duration_seconds: number;
@@ -215,8 +217,8 @@ export function AdminDashboardDuration({
                       onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <td style={{ padding: "11px 12px", color: "#64748b", fontWeight: 600 }}>
-                        #{idx + 1}
+                      <td style={{ padding: "11px 12px", color: "#475569", fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {p.question_number ? `Câu ${String(p.question_number).padStart(2, "0")}` : `#${idx + 1}`}
                       </td>
                       <td style={{ padding: "11px 14px" }}>
                         <div style={{ fontWeight: 600, color: "#09090b", lineHeight: 1.45 }}>
