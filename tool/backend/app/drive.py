@@ -163,6 +163,7 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
             raise HTTPException(403, "Admin credential must be in header")
         admin(x_admin_key)
         import re
+        import logging
         from collections import defaultdict
 
         try:
@@ -170,191 +171,203 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
         except Exception as exc:
             raise HTTPException(400, f"Google Drive chưa được kết nối hoặc lỗi cấu hình: {exc}")
 
-        root_id = drive.folder_id
-        items_in_root = drive.list_children(root_id)
-        FOLDER_MIME = "application/vnd.google-apps.folder"
+        try:
+            root_id = drive.folder_id
+            items_in_root = drive.list_children(root_id)
+            FOLDER_MIME = "application/vnd.google-apps.folder"
 
-        # 1. Clean up database duplicate recordings first
-        db_duplicates_removed = 0
-        drive_files_to_delete_from_db = set()
-        with db() as c:
-            # Find (participant_id, prompt_id) with multiple recordings
-            dup_prompt_rows = c.execute("""
-                SELECT participant_id, prompt_id, COUNT(*) as cnt
-                FROM recordings
-                GROUP BY participant_id, prompt_id
-                HAVING COUNT(*) > 1
-            """).fetchall()
-
-            for dup in dup_prompt_rows:
-                p_id, pr_id = dup["participant_id"], dup["prompt_id"]
-                all_recs = c.execute("""
-                    SELECT id, drive_file_id, bytes, created_at
+            # 1. Clean up database duplicate recordings first
+            db_duplicates_removed = 0
+            drive_files_to_delete_from_db = set()
+            with db() as c:
+                # Find (participant_id, prompt_id) with multiple recordings
+                dup_prompt_rows = c.execute("""
+                    SELECT participant_id, prompt_id, COUNT(*) as cnt
                     FROM recordings
-                    WHERE participant_id = ? AND prompt_id = ?
-                    ORDER BY created_at DESC, id DESC
-                """, (p_id, pr_id)).fetchall()
+                    GROUP BY participant_id, prompt_id
+                    HAVING COUNT(*) > 1
+                """).fetchall()
 
-                # Keep the newest recording with a drive_file_id or highest created_at
-                primary_rec = None
-                for r in all_recs:
-                    if r["drive_file_id"]:
-                        primary_rec = r
-                        break
-                if not primary_rec:
-                    primary_rec = all_recs[0]
+                for dup in dup_prompt_rows:
+                    p_id, pr_id = dup["participant_id"], dup["prompt_id"]
+                    all_recs = c.execute("""
+                        SELECT id, drive_file_id, bytes, created_at
+                        FROM recordings
+                        WHERE participant_id = ? AND prompt_id = ?
+                        ORDER BY created_at DESC, id DESC
+                    """, (p_id, pr_id)).fetchall()
 
-                for r in all_recs:
-                    if r["id"] != primary_rec["id"]:
-                        dup_rec_id = r["id"]
-                        dup_file_id = r["drive_file_id"]
-                        if dup_file_id and dup_file_id != primary_rec["drive_file_id"]:
-                            drive_files_to_delete_from_db.add(dup_file_id)
+                    # Keep the newest recording with a drive_file_id or highest created_at
+                    primary_rec = None
+                    for r in all_recs:
+                        if r["drive_file_id"]:
+                            primary_rec = r
+                            break
+                    if not primary_rec:
+                        primary_rec = all_recs[0]
 
-                        c.execute("DELETE FROM recording_audio WHERE recording_id = ?", (dup_rec_id,))
-                        c.execute("DELETE FROM drive_sync_jobs WHERE recording_id = ?", (dup_rec_id,))
-                        c.execute("DELETE FROM recordings WHERE id = ?", (dup_rec_id,))
-                        db_duplicates_removed += 1
+                    for r in all_recs:
+                        if r["id"] != primary_rec["id"]:
+                            dup_rec_id = r["id"]
+                            dup_file_id = r["drive_file_id"]
+                            if dup_file_id and dup_file_id != primary_rec["drive_file_id"]:
+                                drive_files_to_delete_from_db.add(dup_file_id)
 
-        # Delete orphan drive files found from DB cleanup
-        for df_id in drive_files_to_delete_from_db:
+                            c.execute("DELETE FROM recording_audio WHERE recording_id = ?", (dup_rec_id,))
+                            c.execute("DELETE FROM drive_sync_jobs WHERE recording_id = ?", (dup_rec_id,))
+                            c.execute("DELETE FROM recordings WHERE id = ?", (dup_rec_id,))
+                            db_duplicates_removed += 1
+
+            # Delete orphan drive files found from DB cleanup
+            for df_id in drive_files_to_delete_from_db:
+                try:
+                    drive.delete(df_id)
+                except Exception:
+                    pass
+
+            # 2. Merge & cleanup duplicate participant folders in Drive
+            folders = [item for item in items_in_root if item.get("mimeType") == FOLDER_MIME]
+            folders_by_name = defaultdict(list)
+            for f in folders:
+                folders_by_name[f["name"]].append(f)
+
+            merged_folders_count = 0
+            deleted_folders_count = 0
+            all_active_folders = []
+
+            for name, f_list in folders_by_name.items():
+                if len(f_list) > 1:
+                    # Keep primary folder (oldest created)
+                    primary_folder = sorted(f_list, key=lambda x: x.get("createdTime", ""))[0]
+                    redundant_folders = [f for f in f_list if f["id"] != primary_folder["id"]]
+
+                    candidate_code = name.split(" - ")[0].strip() if " - " in name else name.strip()
+                    with db() as c:
+                        c.execute(
+                            "UPDATE participants SET drive_folder_id = ? WHERE (name = ? OR participant_code = ? OR participant_code = ?)",
+                            (primary_folder["id"], name, name, candidate_code)
+                        )
+
+                    for dup in redundant_folders:
+                        try:
+                            dup_files = drive.list_children(dup["id"])
+                        except Exception:
+                            dup_files = []
+                        for df in dup_files:
+                            try:
+                                drive.move_and_rename_file(
+                                    file_id=df["id"],
+                                    new_name=df["name"],
+                                    target_parent_id=primary_folder["id"],
+                                    old_parent_id=dup["id"]
+                                )
+                            except Exception:
+                                pass
+                        try:
+                            drive.delete(dup["id"])
+                            deleted_folders_count += 1
+                        except Exception:
+                            pass
+                    merged_folders_count += 1
+                    all_active_folders.append(primary_folder)
+                else:
+                    all_active_folders.append(f_list[0])
+
+            # 3. Cleanup duplicate audio files in each folder
+            active_db_drive_ids = set()
+            with db() as c:
+                for row in c.execute("SELECT drive_file_id FROM recordings WHERE drive_file_id IS NOT NULL AND drive_file_id != ''").fetchall():
+                    active_db_drive_ids.add(row["drive_file_id"])
+
+            deleted_files_count = len(drive_files_to_delete_from_db)
+            folders_to_check = all_active_folders + [{"id": root_id, "name": "[Root]"}]
+
+            def extract_prompt_key(fname: str) -> str:
+                m = re.match(r"^([A-Za-z0-9_-]+?(?:_Cau\d+|_SWT_\d+|_P\d+))", fname, re.IGNORECASE)
+                if m:
+                    return m.group(1).lower()
+                clean = re.sub(r"\s*\(\d+\)", "", fname)
+                return clean.lower()
+
+            for folder in folders_to_check:
+                fid = folder["id"]
+                try:
+                    files = [f for f in drive.list_children(fid) if f.get("mimeType") != FOLDER_MIME]
+                except Exception:
+                    files = []
+                if not files:
+                    continue
+
+                audio_files = [f for f in files if not f["name"].lower().endswith(".csv")]
+
+                files_by_key = defaultdict(list)
+                for f in audio_files:
+                    key = extract_prompt_key(f["name"])
+                    files_by_key[key].append(f)
+
+                for key, flist in files_by_key.items():
+                    if len(flist) > 1:
+                        flist_sorted = sorted(
+                            flist,
+                            key=lambda x: (
+                                1 if x["id"] in active_db_drive_ids else 0,
+                                int(x.get("size") or 0) > 0,
+                                x.get("createdTime", "")
+                            ),
+                            reverse=True
+                        )
+                        primary_file = flist_sorted[0]
+                        redundant_files = flist_sorted[1:]
+                        kept_id = primary_file["id"]
+
+                        for dup in redundant_files:
+                            dup_id = dup["id"]
+                            if dup_id != kept_id:
+                                with db() as c:
+                                    c.execute(
+                                        "UPDATE recordings SET drive_file_id = ? WHERE drive_file_id = ?",
+                                        (kept_id, dup_id)
+                                    )
+                                    c.execute(
+                                        "UPDATE drive_sync_jobs SET drive_file_id = ? WHERE drive_file_id = ?",
+                                        (kept_id, dup_id)
+                                    )
+                                try:
+                                    drive.delete(dup_id)
+                                    deleted_files_count += 1
+                                except Exception:
+                                    pass
+
+            # Re-sync CSV manifest
             try:
-                drive.delete(df_id)
+                from app.worker import sync_drive_manifest_csv
+                sync_drive_manifest_csv(db, drive)
             except Exception:
                 pass
 
-        # 2. Merge & cleanup duplicate participant folders in Drive
-        folders = [item for item in items_in_root if item.get("mimeType") == FOLDER_MIME]
-        folders_by_name = defaultdict(list)
-        for f in folders:
-            folders_by_name[f["name"]].append(f)
+            msg_parts = []
+            if deleted_folders_count > 0:
+                msg_parts.append(f"Đã gộp và xóa {deleted_folders_count} thư mục phụ trùng lặp")
+            if deleted_files_count > 0:
+                msg_parts.append(f"Xóa {deleted_files_count} bản sao file audio thừa trên Google Drive")
+            if db_duplicates_removed > 0:
+                msg_parts.append(f"Dọn sạch {db_duplicates_removed} bản ghi trùng lặp trong CSDL")
 
-        merged_folders_count = 0
-        deleted_folders_count = 0
-        all_active_folders = []
+            final_msg = ("Dọn dẹp thành công: " + "; ".join(msg_parts) + ".") if msg_parts else "Hệ thống Google Drive và CSDL đã sạch sẽ, không phát hiện bản sao trùng lặp."
 
-        for name, f_list in folders_by_name.items():
-            if len(f_list) > 1:
-                # Keep primary folder (oldest created)
-                primary_folder = sorted(f_list, key=lambda x: x.get("createdTime", ""))[0]
-                redundant_folders = [f for f in f_list if f["id"] != primary_folder["id"]]
-
-                with db() as c:
-                    c.execute(
-                        "UPDATE participants SET drive_folder_id = ? WHERE (name = ? OR participant_code = ? OR ? LIKE participant_code || '%')",
-                        (primary_folder["id"], name, name, name)
-                    )
-
-                for dup in redundant_folders:
-                    dup_files = drive.list_children(dup["id"])
-                    for df in dup_files:
-                        try:
-                            drive.move_and_rename_file(
-                                file_id=df["id"],
-                                new_name=df["name"],
-                                target_parent_id=primary_folder["id"],
-                                old_parent_id=dup["id"]
-                            )
-                        except Exception:
-                            pass
-                    try:
-                        drive.delete(dup["id"])
-                        deleted_folders_count += 1
-                    except Exception:
-                        pass
-                merged_folders_count += 1
-                all_active_folders.append(primary_folder)
-            else:
-                all_active_folders.append(f_list[0])
-
-        # 3. Cleanup duplicate audio files in each folder
-        # Query all active drive_file_ids from DB to prioritize keeping them
-        active_db_drive_ids = set()
-        with db() as c:
-            for row in c.execute("SELECT drive_file_id FROM recordings WHERE drive_file_id IS NOT NULL AND drive_file_id != ''").fetchall():
-                active_db_drive_ids.add(row["drive_file_id"])
-
-        deleted_files_count = len(drive_files_to_delete_from_db)
-        folders_to_check = all_active_folders + [{"id": root_id, "name": "[Root]"}]
-
-        def extract_prompt_key(fname: str) -> str:
-            m = re.match(r"^([A-Za-z0-9_-]+?(?:_Cau\d+|_SWT_\d+|_P\d+))", fname, re.IGNORECASE)
-            if m:
-                return m.group(1).lower()
-            clean = re.sub(r"\s*\(\d+\)", "", fname)
-            return clean.lower()
-
-        for folder in folders_to_check:
-            fid = folder["id"]
-            files = [f for f in drive.list_children(fid) if f.get("mimeType") != FOLDER_MIME]
-            if not files:
-                continue
-
-            audio_files = [f for f in files if not f["name"].lower().endswith(".csv")]
-
-            files_by_key = defaultdict(list)
-            for f in audio_files:
-                key = extract_prompt_key(f["name"])
-                files_by_key[key].append(f)
-
-            for key, flist in files_by_key.items():
-                if len(flist) > 1:
-                    flist_sorted = sorted(
-                        flist,
-                        key=lambda x: (
-                            1 if x["id"] in active_db_drive_ids else 0,
-                            int(x.get("size") or 0) > 0,
-                            x.get("createdTime", "")
-                        ),
-                        reverse=True
-                    )
-                    primary_file = flist_sorted[0]
-                    redundant_files = flist_sorted[1:]
-                    kept_id = primary_file["id"]
-
-                    for dup in redundant_files:
-                        dup_id = dup["id"]
-                        if dup_id != kept_id:
-                            with db() as c:
-                                c.execute(
-                                    "UPDATE recordings SET drive_file_id = ? WHERE drive_file_id = ?",
-                                    (kept_id, dup_id)
-                                )
-                                c.execute(
-                                    "UPDATE drive_sync_jobs SET drive_file_id = ? WHERE drive_file_id = ?",
-                                    (kept_id, dup_id)
-                                )
-                            try:
-                                drive.delete(dup_id)
-                                deleted_files_count += 1
-                            except Exception:
-                                pass
-
-        # Re-sync CSV manifest
-        try:
-            from app.worker import sync_drive_manifest_csv
-            sync_drive_manifest_csv(db, drive)
-        except Exception:
-            pass
-
-        msg_parts = []
-        if deleted_folders_count > 0:
-            msg_parts.append(f"Đã gộp và xóa {deleted_folders_count} thư mục phụ trùng lặp")
-        if deleted_files_count > 0:
-            msg_parts.append(f"Xóa {deleted_files_count} bản sao file audio thừa trên Google Drive")
-        if db_duplicates_removed > 0:
-            msg_parts.append(f"Dọn sạch {db_duplicates_removed} bản ghi trùng lặp trong CSDL")
-
-        final_msg = ("Dọn dẹp thành công: " + "; ".join(msg_parts) + ".") if msg_parts else "Hệ thống Google Drive và CSDL đã sạch sẽ, không phát hiện bản sao trùng lặp."
-
-        return {
-            "status": "success",
-            "merged_folders_count": merged_folders_count,
-            "deleted_folders_count": deleted_folders_count,
-            "deleted_files_count": deleted_files_count,
-            "db_duplicates_removed": db_duplicates_removed,
-            "message": final_msg
-        }
+            return {
+                "status": "success",
+                "merged_folders_count": merged_folders_count,
+                "deleted_folders_count": deleted_folders_count,
+                "deleted_files_count": deleted_files_count,
+                "db_duplicates_removed": db_duplicates_removed,
+                "message": final_msg
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Drive cleanup duplicates error: %s", exc)
+            raise HTTPException(400, f"Lỗi trong quá trình dọn dẹp Google Drive: {exc}")
 
     @app.post("/api/v1/admin/drive/connect")
     def connect_drive(
@@ -1067,18 +1080,23 @@ class GoogleDriveClient:
             }
             if page_token:
                 params["pageToken"] = page_token
-            res = requests.request(
-                "GET",
-                "https://www.googleapis.com/drive/v3/files",
-                headers=headers,
-                params=params,
-                timeout=20.0,
-            )
-            res.raise_for_status()
-            data = res.json()
-            items.extend(data.get("files", []))
-            page_token = data.get("nextPageToken")
-            if not page_token:
+            try:
+                res = requests.request(
+                    "GET",
+                    "https://www.googleapis.com/drive/v3/files",
+                    headers=headers,
+                    params=params,
+                    timeout=20.0,
+                )
+                res.raise_for_status()
+                data = res.json()
+                items.extend(data.get("files", []))
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("Error querying files from Google Drive: %s", exc)
                 break
         return items
 
