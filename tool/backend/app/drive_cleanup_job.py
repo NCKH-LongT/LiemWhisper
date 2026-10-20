@@ -59,7 +59,7 @@ def _update(db, job_id, status, phase, processed, total, result=None):
 
 
 def _run_cleanup(db, job_id):
-    from app.drive import get_drive_client
+    from app.drive import DriveAuthorizationError, get_drive_client
     from app.drive_cleanup import cleanup_duplicates
     processed = total = 0
     def report(phase, count, size):
@@ -77,6 +77,9 @@ def _run_cleanup(db, job_id):
             except DriveBusy:
                 report("Đang chờ lượt đồng bộ Drive", 0, 0)
                 time.sleep(2)
+    except DriveAuthorizationError as exc:
+        logging.getLogger(__name__).warning("Drive cleanup authorization failed: %s", exc)
+        _update(db, job_id, "failed", str(exc), processed, total)
     except Exception:
         logging.getLogger(__name__).exception("Drive cleanup background job failed")
         _update(db, job_id, "failed",

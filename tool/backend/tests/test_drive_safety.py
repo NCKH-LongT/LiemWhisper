@@ -256,3 +256,42 @@ def test_busy_lock_fails_fast_in_other_thread(recording):
     with drive_lock(db):
         with ThreadPoolExecutor(max_workers=1) as pool:
             pool.submit(attempt).result(timeout=3)
+
+
+@pytest.mark.parametrize("code, expected", [
+    ("invalid_grant", "Liên kết lại Google Drive"),
+    ("invalid_client", "GOOGLE_CLIENT_SECRET"),
+    ("unexpected-provider-error", "HTTP 400"),
+])
+def test_refresh_failure_is_actionable_without_leaking_tokens(monkeypatch, code, expected):
+    from cryptography.fernet import Fernet
+    from app.drive import DriveAuthorizationError
+    key = Fernet.generate_key()
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", key.decode())
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "private-client-secret")
+    client = GoogleDriveClient(db, "root", Fernet(key).encrypt(b"private-refresh-token").decode())
+    response = Mock(status_code=400)
+    response.json.return_value = {
+        "error": code, "error_description": "private-refresh-token private-client-secret",
+    }
+    monkeypatch.setattr("app.drive.requests.request", Mock(return_value=response))
+    with pytest.raises(DriveAuthorizationError) as error:
+        client._get_access_token()
+    assert expected in str(error.value)
+    assert "private-" not in str(error.value)
+
+
+def test_cleanup_progress_reports_oauth_reconnect_instruction(recording, monkeypatch):
+    from app import drive_cleanup_job as jobs
+    from app.drive import DriveAuthorizationError
+    monkeypatch.setattr(jobs, "Thread", Mock())
+    status = jobs.start_cleanup(db)
+    drive = Drive()
+    drive.list_children = Mock(side_effect=DriveAuthorizationError("Liên kết lại Google Drive"))
+    monkeypatch.setattr("app.drive.get_drive_client", lambda _: drive)
+    jobs._run_cleanup(db, status["job_id"])
+    status = jobs.cleanup_status(db)
+    assert status["status"] == "failed"
+    assert status["phase"] == "Liên kết lại Google Drive"
+    assert not drive.files

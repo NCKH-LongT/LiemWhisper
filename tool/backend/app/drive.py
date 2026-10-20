@@ -17,6 +17,9 @@ import requests
 STATE_TTL_SECONDS = 600  # 10 minutes
 COOKIE_NAME = "drive_oauth_verifier"
 
+class DriveAuthorizationError(RuntimeError):
+    """Safe, actionable OAuth error; never includes provider payloads or tokens."""
+
 
 def _b64url_no_pad(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
@@ -580,10 +583,31 @@ class GoogleDriveClient:
         }
         try:
             res = requests.request("POST", "https://oauth2.googleapis.com/token", data=data, timeout=15.0)
+            if res.status_code >= 400:
+                try:
+                    error_body = res.json()
+                    code = error_body.get("error") if isinstance(error_body, dict) else None
+                except ValueError:
+                    code = None
+                if code == "invalid_grant":
+                    raise DriveAuthorizationError(
+                        "Google từ chối refresh token (invalid_grant). Bấm Liên kết lại Google Drive và cấp quyền lại bằng tài khoản đang chứa audio."
+                    )
+                if code in ("invalid_client", "unauthorized_client"):
+                    raise DriveAuthorizationError(
+                        "Google từ chối cấu hình OAuth. Kiểm tra GOOGLE_CLIENT_ID và GOOGLE_CLIENT_SECRET thuộc cùng một OAuth client trên Render, rồi liên kết lại Drive."
+                    )
+                raise DriveAuthorizationError(
+                    f"Google từ chối làm mới quyền truy cập Drive (HTTP {res.status_code}). Kiểm tra cấu hình OAuth và liên kết lại Drive."
+                )
             res.raise_for_status()
             token_json = res.json()
-        except Exception:
-            raise RuntimeError("Failed to refresh Google Drive access token")
+        except DriveAuthorizationError:
+            raise
+        except (requests.RequestException, ValueError):
+            raise DriveAuthorizationError(
+                "Không thể kết nối dịch vụ xác thực Google Drive. Vui lòng thử lại."
+            ) from None
 
         token = token_json.get("access_token")
         if not token:
