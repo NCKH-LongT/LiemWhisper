@@ -12,6 +12,9 @@ services:
       - STORAGE_BACKEND=local
       - ADMIN_API_KEY=${ADMIN_API_KEY:-liemwhisper-admin-secret-2026}
       - WEB_PUBLIC_URL=${WEB_PUBLIC_URL:-*}
+      - TURNSTILE_ENABLED=${TURNSTILE_ENABLED:-false}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - TURNSTILE_ALLOWED_HOSTNAMES=${TURNSTILE_ALLOWED_HOSTNAMES:-}
     restart: unless-stopped
 
   client:
@@ -20,6 +23,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        - NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
     ports:
       - "3000:3000"
     environment:

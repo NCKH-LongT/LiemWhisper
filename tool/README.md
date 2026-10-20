@@ -76,3 +76,27 @@ npm start
 ```bash
 PYTHONPATH=tool/backend python tool/scripts/seed_prompts.py
 ```
+# Cloudflare Turnstile
+
+1. Open Cloudflare Dashboard → Turnstile → Add widget, select Managed,
+   and add the frontend hostname (without scheme or path).
+2. Frontend (Vercel environment or `client/.env.local`):
+   set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to the widget's public Site key.
+3. Backend (Render environment or the environment used to launch FastAPI):
+   set `TURNSTILE_ENABLED=true`, `TURNSTILE_SECRET_KEY` to the private Secret key,
+   and `TURNSTILE_ALLOWED_HOSTNAMES` to comma-separated frontend hostnames.
+   Never put the Secret key in a `NEXT_PUBLIC_` variable.
+4. Rebuild/redeploy the frontend and restart/redeploy the backend.
+   Docker Compose reads these variables from `tool/.env`; rebuild the client.
+
+Turnstile protects Google login, admin login, legacy student login, and legacy
+participant signup. Existing sessions and Google onboarding continue to use
+their session tokens. New login attempts reset the challenge, since verification
+tokens are single-use. Without configuration CAPTCHA is disabled for local
+development; setting `TURNSTILE_ENABLED=true` without a secret rejects logins.
+Setting a secret also enables backend verification.
+
+Check deployment by submitting login without a CAPTCHA token (must fail),
+then completing the widget and signing in. Test expired/reused tokens and
+retry after invalid credentials. Use Cloudflare's testing keys only in a test
+environment: https://developers.cloudflare.com/turnstile/troubleshooting/testing/

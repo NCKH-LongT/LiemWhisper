@@ -47,6 +47,7 @@ from app.storage import (
     validate_storage_backend,
 )
 from app.worker import enqueue_delete_job
+from app.turnstile import verify_turnstile
 
 ROOT = get_data_root()
 STORAGE = os.getenv("STORAGE_BACKEND", "local")
@@ -221,7 +222,10 @@ class BulkPromptsInput(BaseModel):
     difficulty: str = "normal"
     publish_immediately: bool = True
 
-class SignupInput(BaseModel):
+class CaptchaInput(BaseModel):
+    turnstile_token: str = Field(default="", max_length=2048)
+
+class SignupInput(CaptchaInput):
     consent: bool
     consent_version: str = Field(default="v1.0", min_length=1, max_length=30)
     participant_code: str = Field(default="", max_length=60)
@@ -240,13 +244,13 @@ class ReviewInput(BaseModel):
     transcript: str = Field(default="", max_length=4000)
     notes: str = Field(default="", max_length=1000)
 
-class AdminLoginInput(BaseModel):
+class AdminLoginInput(CaptchaInput):
     key: str = Field(min_length=1, max_length=200)
 
-class StudentLoginInput(BaseModel):
+class StudentLoginInput(CaptchaInput):
     identifier: str = Field(min_length=1, max_length=100)
 
-class GoogleAuthInput(BaseModel):
+class GoogleAuthInput(CaptchaInput):
     credential: str
 
 class GoogleOnboardInput(BaseModel):
@@ -326,6 +330,7 @@ def verify_google_id_token(credential: str) -> dict:
 
 @app.post("/api/v1/auth/admin-login")
 def auth_admin_login(data: AdminLoginInput):
+    verify_turnstile(data.turnstile_token, "admin_login")
     k = data.key.strip()
     try:
         session_token = admin_login(db, k, ADMIN_KEY)
@@ -354,6 +359,7 @@ def auth_admin_logout(x_admin_key: str | None = Header(None), key: str | None = 
 
 @app.post("/api/v1/auth/student-login")
 def auth_student_login(data: StudentLoginInput):
+    verify_turnstile(data.turnstile_token, "student_login")
     ident = data.identifier.strip()
     try:
         row = participant_login(db, ident)
@@ -681,6 +687,7 @@ def manual_seed_default(force: bool = False):
 
 @app.post("/api/v1/participants")
 def signup(data: SignupInput, request: Request):
+    verify_turnstile(data.turnstile_token, "signup")
     if not data.consent:
         raise HTTPException(400, "Explicit consent is required")
     token = secrets.token_urlsafe(32)
@@ -717,6 +724,7 @@ def signup(data: SignupInput, request: Request):
 @app.post("/api/v1/auth/google")
 def auth_google(data: GoogleAuthInput, request: Request):
     """Authenticate with Google ID token, returning session or triggering onboarding."""
+    verify_turnstile(data.turnstile_token, "google_login")
     payload = verify_google_id_token(data.credential)
     google_id = payload.get("sub", "")
     email = payload.get("email", "").lower().strip()
