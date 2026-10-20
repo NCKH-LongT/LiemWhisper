@@ -13,6 +13,7 @@ import {
 } from "../lib/security";
 import { DriveStatusResponse } from "../lib/drive";
 import { downloadAuthenticatedExport } from "../lib/auth-fetch";
+import { AdminEmailPanel } from "../components/AdminEmailPanel";
 import { AdminDrivePanel } from "../components/AdminDrivePanel";
 import { Turnstile } from "../components/Turnstile";
 import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
@@ -53,6 +54,7 @@ type ParticipantMe = {
   consent_version: string;
   total_recordings: number;
   completed_at?: number;
+  email_delivery?: { status: string };
   survey: Record<string, string>;
 };
 
@@ -259,6 +261,17 @@ export default function Home() {
   // Student session data
   const [token, setToken] = useState("");
   const [participantInfo, setParticipantInfo] = useState<ParticipantMe | null>(null);
+  useEffect(() => {
+    if (!token || !["pending", "sending"].includes(participantInfo?.email_delivery?.status || "")) return;
+    let active = true;
+    const timer = setInterval(async () => {
+      try {
+        const data = await request("/api/v1/participants/me", { headers: { "x-participant-token": token } });
+        if (active) setParticipantInfo(data);
+      } catch { /* Keep the last known status during a temporary connection failure. */ }
+    }, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [token, participantInfo?.email_delivery?.status]);
 
   // Google onboarding form state
   const [consent, setConsent] = useState(false);
@@ -762,9 +775,9 @@ export default function Home() {
         email: res.email || email
       });
       setParticipantInfo((prev) =>
-        prev ? { ...prev, completed_at: res.completed_at || Math.floor(Date.now() / 1000) } : prev
+        prev ? { ...prev, email_delivery: res.email_delivery, completed_at: res.completed_at || Math.floor(Date.now() / 1000) } : prev
       );
-      setNotice("Chúc mừng bạn đã hoàn tất bài thi! Thư cảm ơn đã được gửi đến email của bạn.");
+      setNotice("Đã ghi nhận hoàn thành bài thi. Thư cảm ơn đang chờ xử lý.");
     } catch (e) {
       alertError(e);
     } finally {
@@ -1998,7 +2011,7 @@ export default function Home() {
               </div>
 
               <div style={{ background: "var(--success-bg)", color: "var(--success)", padding: "12px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, maxWidth: 500, margin: "0 auto 28px" }}>
-                <svg className="mail-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg> Thư cảm ơn chính thức đã được gửi đến hộp thư Gmail của bạn. Vui lòng kiểm tra hộp thư đến (hoặc hòm thư Spam/Promotions nếu chưa thấy).
+                <svg className="mail-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg> {participantInfo?.email_delivery?.status === "sent" ? "Gmail đã nhận thư cảm ơn để gửi. Bạn hãy kiểm tra hộp thư đến hoặc Spam." : ["pending", "sending"].includes(participantInfo?.email_delivery?.status || "") ? "Thư cảm ơn đang chờ gửi. Kết quả thu âm của bạn đã được ghi nhận." : "Chưa xác nhận gửi được thư cảm ơn. Kết quả thu âm của bạn đã được ghi nhận; quản trị viên có thể kiểm tra trạng thái gửi."}
               </div>
 
               <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
@@ -2477,6 +2490,8 @@ export default function Home() {
             driveStatus={driveStatus}
             onStatusUpdated={(s) => setDriveStatus(s)}
           />
+
+          <AdminEmailPanel apiBase={API} adminToken={adminKey} />
 
           {/* Admin Navigation Bar */}
           <section className="admin-navigation" aria-label="Điều hướng quản trị">

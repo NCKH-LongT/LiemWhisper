@@ -11,7 +11,10 @@ from app.mailer import send_thank_you_email
 from test_collection import setup_test_app
 
 
-def test_mailer_simulated_mode_without_credentials():
+def test_mailer_simulated_mode_without_credentials(monkeypatch):
+    monkeypatch.setenv("EMAIL_PROVIDER", "smtp")
+    for key in ("SMTP_USER", "SMTP_PASSWORD", "GMAIL_APP_PASSWORD"):
+        monkeypatch.delenv(key, raising=False)
     res = send_thank_you_email(
         to_email="student@fpt.edu.vn",
         participant_name="Nguyen Van A",
@@ -69,7 +72,18 @@ def test_participant_completion_endpoint(tmp_path, monkeypatch):
     assert data_again["completed"] is True
     assert data_again.get("already_completed") is True
     assert data_again["completed_at"] == data["completed_at"]
-    assert data_again["email_delivery"].get("already_sent") is True
+    assert data_again["email_delivery"]["status"] == "pending"
+    assert data_again["email_delivery"]["sent"] is False
+    from app.email_delivery import process_email_queue
+    calls = []
+    def fake_send(*args, **kwargs):
+        calls.append(args)
+        return {"sent": True, "message_id": "gmail-test"}
+    monkeypatch.setattr("app.mailer.send_thank_you_email", fake_send)
+    process_email_queue(db)
+    process_email_queue(db)
+    assert len(calls) == 1
+    assert client.get("/api/v1/participants/me", headers=headers).json()["email_delivery"]["sent"] is True
 
     # Attempting to upload recording after completion should be rejected with 403
     webm_payload = b"\x1a\x45\xdf\xa3" + b"\x00" * 200

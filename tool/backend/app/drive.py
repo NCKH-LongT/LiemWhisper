@@ -26,6 +26,8 @@ def _b64url_no_pad(data: bytes) -> str:
 
 
 def _init_tables(db: Callable[[], Any]) -> None:
+    from app.email_delivery import init_email_tables
+    init_email_tables(db)
     with db() as c:
         c.execute("""
         CREATE TABLE IF NOT EXISTS drive_oauth_state(
@@ -304,7 +306,10 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": redirect_uri,
-            "scope": "https://www.googleapis.com/auth/drive.file",
+            "scope": "https://www.googleapis.com/auth/drive.file" + (
+                " https://www.googleapis.com/auth/gmail.send"
+                if os.getenv("EMAIL_PROVIDER", "gmail_api").strip().lower() == "gmail_api" else ""
+            ),
             "access_type": "offline",
             "prompt": "consent",
             "state": raw_state,
@@ -457,6 +462,9 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
             raise HTTPException(400, "No refresh token provided by Google. Re-consent required.")
 
         with db() as c:
+            c.execute("""INSERT INTO gmail_authorization(id,scopes,updated_at) VALUES ('default',?,?)
+                ON CONFLICT(id) DO UPDATE SET scopes=excluded.scopes,updated_at=excluded.updated_at""",
+                (token_json.get("scope", ""), now))
             c.execute(
                 "INSERT INTO drive_connection (id, account_id, account_email, refresh_token_enc, folder_id, created_at, updated_at) "
                 "VALUES ('default', ?, ?, ?, ?, ?, ?) "

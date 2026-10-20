@@ -46,6 +46,7 @@ from app.storage import (
     stream_audio_response,
     validate_storage_backend,
 )
+from app.email_delivery import init_email_tables, enqueue_email, delivery_status, process_email_queue, register_email_routes
 from app.worker import enqueue_delete_job
 from app.turnstile import verify_turnstile
 
@@ -71,6 +72,7 @@ AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 init_db()
 setup_auth(db)
+init_email_tables(db)
 
 
 def auto_seed_default_prompts(force: bool = False) -> dict:
@@ -104,14 +106,33 @@ async def periodic_outbox_sync():
             pass
         await asyncio.sleep(20)
 
+async def periodic_email_sync():
+    while True:
+        try:
+            await asyncio.to_thread(process_email_queue, db)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Email queue processing failed")
+        await asyncio.sleep(10)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     worker_task = None
+    email_task = None
     if os.getenv("TESTING") != "true":
         worker_task = asyncio.create_task(periodic_outbox_sync())
+        email_task = asyncio.create_task(periodic_email_sync())
     try:
         yield
     finally:
+        if email_task:
+            email_task.cancel()
+            try:
+                await email_task
+            except asyncio.CancelledError:
+                pass
         if worker_task:
             worker_task.cancel()
             try:
@@ -146,6 +167,7 @@ def admin(x_admin_key: str | None = None, key: str | None = None):
 
 
 register_drive_routes(app, db, admin)
+register_email_routes(app, db, admin)
 
 
 def participant(x_participant_token: str | None = None, token: str | None = None):
@@ -885,6 +907,7 @@ def participant_me(x_participant_token: str | None = Header(None), token: str | 
     with db() as c:
         row = c.execute("SELECT id, participant_code, consent_version, consent_at, survey, email, name, completed_at, is_admin FROM participants WHERE id=?", (pid,)).fetchone()
         recs = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()
+        email_state = delivery_status(c, pid)
     if not row:
         raise HTTPException(404, "Participant not found")
     survey = json.loads(row["survey"]) if row["survey"] else {}
@@ -897,6 +920,7 @@ def participant_me(x_participant_token: str | None = Header(None), token: str | 
         "name": row.get("name", "") or "",
         "consent_version": row["consent_version"],
         "total_recordings": recs["count"] if recs else 0,
+        "email_delivery": email_state,
         "completed_at": row.get("completed_at", 0) or 0,
         "is_admin": user_is_admin,
         "survey": survey
@@ -916,36 +940,15 @@ def participant_complete(
         if not row:
             raise HTTPException(404, "Participant not found")
 
-        # Anti-spam: If session is already completed, do not re-dispatch email or overwrite timestamp
-        if row.get("completed_at"):
-            recs_count = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()["count"]
-            return {
-                "status": "success",
-                "completed": True,
-                "already_completed": True,
-                "completed_at": row["completed_at"],
-                "total_recordings": recs_count,
-                "email": (row.get("email") or "").strip(),
-                "email_delivery": {"already_sent": True, "sent": True, "simulated": False},
-                "message": "Bài thi của bạn đã được xác nhận hoàn thành trước đó."
-            }
-
         recs_count = c.execute("SELECT COUNT(*) as count FROM recordings WHERE participant_id=?", (pid,)).fetchone()["count"]
-        c.execute("UPDATE participants SET completed_at=? WHERE id=?", (now, pid))
+        completed = c.execute("UPDATE participants SET completed_at=? WHERE id=? AND (completed_at IS NULL OR completed_at=0) RETURNING id", (now, pid)).fetchone()
+        if completed:
+            enqueue_email(c, pid)
+        email_status = delivery_status(c, pid)
+        current = c.execute("SELECT completed_at FROM participants WHERE id=?", (pid,)).fetchone()
+        completed_at = current["completed_at"]
 
     email = (row.get("email") or "").strip()
-    name = (row.get("name") or "").strip()
-    code = (row.get("participant_code") or "").strip()
-
-    email_status = {}
-    if email:
-        from app.mailer import send_thank_you_email
-        email_status = send_thank_you_email(
-            to_email=email,
-            participant_name=name,
-            participant_code=code,
-            total_recordings=recs_count
-        )
 
     if background_tasks is not None:
         def _bg_drive_sync():
@@ -960,13 +963,10 @@ def participant_complete(
         background_tasks.add_task(_bg_drive_sync)
 
     return {
-        "status": "success",
-        "completed": True,
-        "completed_at": now,
-        "total_recordings": recs_count,
-        "email": email,
+        "status": "success", "completed": True, "already_completed": not bool(completed),
+        "completed_at": completed_at, "total_recordings": recs_count, "email": email,
         "email_delivery": email_status,
-        "message": "Chúc mừng bạn đã hoàn thành bài thu âm! Thư cảm ơn đã được gửi đến email của bạn."
+        "message": "Đã ghi nhận hoàn thành phiên thu âm. Trạng thái thư cảm ơn được cập nhật riêng."
     }
 
 @app.post("/api/v1/participants/withdraw")
@@ -991,6 +991,7 @@ def participant_withdraw(x_participant_token: str | None = Header(None), token: 
                 enqueue_delete_job(c, rec_id, r["drive_file_id"])
             c.execute("DELETE FROM recording_audio WHERE recording_id=?", (rec_id,))
         c.execute("DELETE FROM recordings WHERE participant_id=?", (pid,))
+        c.execute("DELETE FROM email_deliveries WHERE participant_id=?", (pid,))
         c.execute("DELETE FROM participants WHERE id=?", (pid,))
     return {"withdrawn": True, "deleted_recordings": len(rows), "deleted_files": deleted_files}
 

@@ -19,6 +19,7 @@ HEADERS = {"x-admin-key": "test-admin"}
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     for key, value in {
+        "EMAIL_PROVIDER": "gmail_api",
         "GOOGLE_CLIENT_ID": "test-client",
         "GOOGLE_CLIENT_SECRET": "test-secret",
         "GOOGLE_REDIRECT_URI": "https://app.test" + BASE + "/callback",
@@ -80,7 +81,7 @@ def test_connect_requires_header_and_binds_short_lived_pkce_state(env):
     }
     response = first_party_start(client, client.post(BASE + "/connect", headers=HEADERS))
     query = parse_qs(urlparse(response.json()["authorization_url"]).query)
-    assert query["scope"] == ["https://www.googleapis.com/auth/drive.file"]
+    assert query["scope"][0].split() == ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/gmail.send"]
     assert query["access_type"] == ["offline"]
     assert query["prompt"] == ["consent"]
     assert query["redirect_uri"] == ["https://app.test" + BASE + "/callback"]
