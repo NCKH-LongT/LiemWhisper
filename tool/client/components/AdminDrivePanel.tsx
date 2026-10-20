@@ -71,9 +71,9 @@ export function AdminDrivePanel({
     if (!adminToken) return;
     const confirmed = await confirmAction(
       "Hệ thống sẽ quét Google Drive và CSDL để:\n" +
-      "1. Gộp các thư mục trùng lặp của cùng một sinh viên thành 1 thư mục duy nhất.\n" +
-      "2. Xóa các bản sao audio cũ/thừa, chỉ giữ lại đúng 1 bản thu âm hoàn chỉnh nhất cho mỗi câu.\n" +
-      "3. Xóa các thư mục rỗng và cập nhật lại danh sách mã file.\n\n" +
+      "1. Chuyển bản thu đã xác minh về thư mục chính của người tham gia.\n" +
+      "2. Chỉ đưa file trùng tên và có nội dung giống bản thu đã lưu vào thùng rác. Giữ lại các bản khác nội dung hoặc chưa xác minh.\n" +
+      "3. Đưa thư mục dư đã rỗng vào thùng rác và cập nhật danh sách bản thu.\n\n" +
       "Bạn có chắc chắn muốn tiến hành dọn dẹp?"
     );
     if (!confirmed) return;
@@ -330,7 +330,7 @@ export function AdminDrivePanel({
               <button
                 className="drive-secondary" onClick={handleCleanupDuplicates}
                 disabled={cleaning || syncing || loading}
-                title="Quét gộp folder học viên bị trùng và xóa các bản thu thừa"
+                title="Sắp xếp bản thu và đưa các bản sao đã xác minh vào thùng rác"
                 style={{
                   padding: "8px 14px",
                   background: "var(--primary)",

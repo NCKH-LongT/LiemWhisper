@@ -10,10 +10,31 @@ import re
 import time
 import uuid
 from typing import Any, Callable
+from app.drive_lock import serialized_drive
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
+
+
+def participant_folder(db_factory, client, participant_id, name):
+    """Persist the folder ID before creating it, so crash/retry reuses that ID."""
+    if not hasattr(client, "get_or_create_subfolder"):
+        return None
+    with db_factory() as c:
+        row = c.execute("SELECT drive_folder_id FROM participants WHERE id=?", (participant_id,)).fetchone()
+        if not row:
+            raise RuntimeError("Participant no longer exists")
+        folder_id = row["drive_folder_id"]
+        if not folder_id:
+            if hasattr(client, "ensure_folder"):
+                folder_id = client.allocate_id()
+            else:
+                folder_id = client.get_or_create_subfolder(name)
+            c.execute("UPDATE participants SET drive_folder_id=? WHERE id=?", (folder_id, participant_id))
+    if hasattr(client, "ensure_folder"):
+        client.ensure_folder(folder_id, name)
+    return folder_id
 
 
 def enqueue_upload_job(db_conn: Any, recording_id: str) -> str:
@@ -80,6 +101,7 @@ def get_prompt_question_number(db_conn: Any, course_id: str | None, prompt_id: s
     return 1
 
 
+@serialized_drive
 def process_outbox(
     db_factory: Callable[[], Any],
     drive_client: Any = None,
@@ -101,7 +123,7 @@ def process_outbox(
         rows = c.execute(
             """SELECT id, recording_id, action, status, drive_file_id, attempts
                FROM drive_sync_jobs
-               WHERE status IN ('pending', 'retrying')
+               WHERE status IN ('pending', 'retrying', 'uploading')
                ORDER BY created_at ASC
                LIMIT ?""",
             (limit,)
@@ -122,7 +144,7 @@ def process_outbox(
             with db_factory() as c:
                 # Check if job was cancelled
                 curr = c.execute("SELECT status FROM drive_sync_jobs WHERE id=?", (job_id,)).fetchone()
-                if not curr or curr["status"] == "cancelled":
+                if not curr or curr["status"] not in ("pending", "retrying", "uploading"):
                     continue
 
                 # Check if recording still exists (withdrawal race)
@@ -166,8 +188,9 @@ def process_outbox(
                 filename = f"{code}_{cau_label}_{rec_id[:8]}.{rec['format']}" if code else f"{rec_id}.{rec['format']}"
 
                 # Reuse existing file_id from recording if not attached to job
-                if not file_id and rec and rec.get("drive_file_id"):
+                if rec and rec.get("drive_file_id"):
                     file_id = rec["drive_file_id"]
+                    c.execute("UPDATE drive_sync_jobs SET drive_file_id=? WHERE id=?", (file_id, job_id))
 
                 # Preallocate Drive ID if not yet allocated, and persist immediately before uploading
                 if not file_id:
@@ -210,21 +233,9 @@ def process_outbox(
                     continue
 
             # Subfolder in Drive for participant - reuse stored folder_id if available
-            parent_folder_id = rec.get("drive_folder_id") if rec else None
-            if not parent_folder_id and hasattr(drive_client, "get_or_create_subfolder"):
-                try:
-                    parent_folder_id = drive_client.get_or_create_subfolder(folder_name)
-                    if parent_folder_id and rec and rec.get("participant_id"):
-                        with db_factory() as c_up:
-                            c_up.execute(
-                                "UPDATE participants SET drive_folder_id=? WHERE id=? AND (drive_folder_id IS NULL OR drive_folder_id='')",
-                                (parent_folder_id, rec["participant_id"])
-                            )
-                except Exception as exc:
-                    logger.warning("Could not create subfolder '%s': %s", folder_name, exc)
-
             # Perform Drive upload
             try:
+                parent_folder_id = participant_folder(db_factory, drive_client, rec["participant_id"], folder_name)
                 if parent_folder_id and hasattr(drive_client, "get_or_create_subfolder"):
                     actual_file_id = drive_client.put(file_id=file_id, name=filename, body=audio_bytes, mime=rec["mime"], parent_id=parent_folder_id)
                 else:
@@ -241,13 +252,16 @@ def process_outbox(
 
                 # Commit synced state, verifying no withdrawal occurred during upload
                 with db_factory() as c:
-                    check_rec = c.execute("SELECT id FROM recordings WHERE id=?", (rec_id,)).fetchone()
+                    check_rec = c.execute("SELECT id, sha256 FROM recordings WHERE id=?", (rec_id,)).fetchone()
                     if not check_rec:
                         try:
                             drive_client.delete(file_id)
                         except Exception:
                             pass
                         c.execute("UPDATE drive_sync_jobs SET status='cancelled', updated_at=? WHERE id=?", (now, job_id))
+                    elif check_rec["sha256"] != rec["sha256"]:
+                        # A newer recording arrived while the old bytes were uploading.
+                        c.execute("UPDATE drive_sync_jobs SET status='pending', attempts=0, updated_at=? WHERE id=?", (now, job_id))
                     else:
                         c.execute("UPDATE drive_sync_jobs SET status='synced', drive_file_id=?, updated_at=? WHERE id=?", (file_id, now, job_id))
                         c.execute("UPDATE recordings SET drive_sync_status='synced', drive_file_id=? WHERE id=?", (file_id, rec_id))
@@ -282,6 +296,7 @@ def process_outbox(
     return processed_count
 
 
+@serialized_drive
 def backfill_unsynced_drive_jobs(db_factory: Callable[[], Any]) -> int:
     """Finds all recordings not yet marked synced on Google Drive and enqueues upload jobs."""
     now = int(time.time())
@@ -317,6 +332,7 @@ def backfill_unsynced_drive_jobs(db_factory: Callable[[], Any]) -> int:
     return enqueued
 
 
+@serialized_drive
 def process_all_outbox(
     db_factory: Callable[[], Any],
     drive_client: Any = None,
@@ -350,6 +366,7 @@ def process_all_outbox(
     return total
 
 
+@serialized_drive
 def sync_drive_manifest_csv(db_factory: Callable[[], Any], drive_client: Any) -> None:
     """Creates or updates a clean UTF-8 CSV lookup manifest directly in the Google Drive root folder."""
     if not hasattr(drive_client, "upload_or_update_file"):
@@ -433,6 +450,7 @@ def sync_drive_manifest_csv(db_factory: Callable[[], Any], drive_client: Any) ->
         logger.warning("Failed to update Danh_sach_ban_thu.csv on Drive: %s", exc)
 
 
+@serialized_drive
 def organize_existing_drive_files(db_factory: Callable[[], Any], drive_client: Any) -> int:
     """Moves and renames existing Drive files into their participant subfolders."""
     if not hasattr(drive_client, "move_and_rename_file") or not hasattr(drive_client, "get_or_create_subfolder"):
@@ -469,12 +487,12 @@ def organize_existing_drive_files(db_factory: Callable[[], Any], drive_client: A
         else:
             folder_name = f"{code}"
 
-        if folder_name not in subfolder_cache:
+        if r["participant_id"] not in subfolder_cache:
             try:
-                subfolder_cache[folder_name] = drive_client.get_or_create_subfolder(folder_name)
+                subfolder_cache[r["participant_id"]] = participant_folder(db_factory, drive_client, r["participant_id"], folder_name)
             except Exception:
                 continue
-        subfolder_id = subfolder_cache[folder_name]
+        subfolder_id = subfolder_cache[r["participant_id"]]
         if subfolder_id and r.get("participant_id"):
             with db_factory() as c_up:
                 c_up.execute(

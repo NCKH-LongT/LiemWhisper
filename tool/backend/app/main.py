@@ -97,7 +97,7 @@ async def periodic_outbox_sync():
             if is_drive_connected(db):
                 from app.worker import backfill_unsynced_drive_jobs, process_all_outbox
                 await asyncio.to_thread(backfill_unsynced_drive_jobs, db)
-                await asyncio.to_thread(process_all_outbox, db, 20)
+                await asyncio.to_thread(process_all_outbox, db, max_total=20)
         except asyncio.CancelledError:
             break
         except Exception:
@@ -1080,7 +1080,7 @@ async def upload_recording(
                 if initial_sync_status == "pending":
                     from app.worker import enqueue_upload_job
                     c.execute(
-                        "DELETE FROM drive_sync_jobs WHERE recording_id=? AND action='upload' AND status IN ('pending', 'retrying')",
+                        "DELETE FROM drive_sync_jobs WHERE recording_id=? AND action='upload' AND status IN ('pending', 'retrying', 'synced', 'failed')",
                         (rec_id,)
                     )
                     enqueue_upload_job(c, rec_id)

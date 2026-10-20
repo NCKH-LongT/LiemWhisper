@@ -477,24 +477,10 @@ def test_drive_cleanup_duplicates(tmp_path, monkeypatch):
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
-    assert data["merged_folders_count"] == 1
-    assert data["deleted_folders_count"] == 1
-    assert data["deleted_files_count"] >= 1
-
-    # Check that redundant folder was deleted from fake drive
-    assert "f-folder-2" not in fake_drive.files
-    # Check that surviving folder is primary folder
-    assert "f-folder-1" in fake_drive.files
-    # Check that duplicate file was deleted and primary file was kept
-    assert "audio-take-1" not in fake_drive.files
+    # Names/question numbers alone are insufficient evidence to delete recordings.
+    assert data["deleted_folders_count"] == 0
+    assert data["deleted_files_count"] == 0
+    assert "audio-take-1" in fake_drive.files
     assert "audio-take-2" in fake_drive.files
-
-    # Check participant drive_folder_id in DB
-    with main.db() as c:
-        p_row = c.execute("SELECT drive_folder_id FROM participants WHERE id=?", (pid,)).fetchone()
-        assert p_row["drive_folder_id"] == "f-folder-1"
-
-        # Check DB recordings count for this prompt is strictly 1
-        rec_cnt = c.execute("SELECT count(*) FROM recordings WHERE participant_id=? AND prompt_id=?", (pid, prompt1)).fetchone()[0]
-        assert rec_cnt == 1
-
+    assert "f-folder-1" in fake_drive.files
+    assert "f-folder-2" in fake_drive.files

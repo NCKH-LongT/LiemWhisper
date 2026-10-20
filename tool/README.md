@@ -100,3 +100,23 @@ Check deployment by submitting login without a CAPTCHA token (must fail),
 then completing the widget and signing in. Test expired/reused tokens and
 retry after invalid credentials. Use Cloudflare's testing keys only in a test
 environment: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+
+## Google Drive organization and duplicate recovery
+
+- Each participant keeps one persistent `drive_folder_id`; each recording keeps
+  one persistent `drive_file_id`. Retries and re-recordings reuse those IDs.
+- Participant folders retain readable `student-code - name` labels. Audio names
+  contain the question number and recording ID; `Danh_sach_ban_thu.csv` provides
+  participant, course/question context and direct Drive links.
+- Drive sync and cleanup are serialized across threads/processes using a
+  PostgreSQL transaction advisory lock, or an OS file lock for local SQLite.
+- Restart all backend workers when deploying this change so no old worker keeps
+  using the previous synchronization logic.
+- After deployment, use the admin Drive cleanup button to consolidate verified
+  recordings. Same-name files are moved to Trash only when their downloaded
+  SHA-256 matches the canonical database recording and the canonical Drive file.
+  Unknown files, different takes, ambiguous participant names and failed moves
+  are preserved. Redundant folders are trashed only after a complete listing
+  confirms they are empty. No recordings are deleted from SQL by cleanup.
+- Cleanup cannot infer ownership from question numbers alone. Items preserved
+  for manual inspection may remain in older duplicate folders.
