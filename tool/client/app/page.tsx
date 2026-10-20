@@ -14,7 +14,6 @@ import {
 import { DriveStatusResponse } from "../lib/drive";
 import { downloadAuthenticatedExport } from "../lib/auth-fetch";
 import { AdminDrivePanel } from "../components/AdminDrivePanel";
-import { Turnstile } from "../components/Turnstile";
 import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
 import { AdminParticipantsPanel } from "../components/AdminParticipantsPanel";
 import { AdminQuestionsPanel } from "../components/AdminQuestionsPanel";
@@ -306,19 +305,6 @@ export default function Home() {
   );
 
   // Status & loading
-  const captchaToken = useRef("");
-  const authInFlight = useRef(false);
-  const [captchaReady, setCaptchaReady] = useState(false);
-  const [captchaVersion, setCaptchaVersion] = useState(0);
-  const captchaEnabled = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
-  function updateCaptcha(token: string) {
-    captchaToken.current = token;
-    setCaptchaReady(Boolean(token));
-  }
-  function resetCaptcha() {
-    updateCaptcha("");
-    setCaptchaVersion((version) => version + 1);
-  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -549,19 +535,13 @@ export default function Home() {
 
   async function handleGoogleCallback(credential: string) {
     if (!credential) return;
-    if (authInFlight.current) return;
-    if (captchaEnabled && !captchaToken.current) {
-      setError("Vui lòng hoàn thành xác minh CAPTCHA trước khi đăng nhập.");
-      return;
-    }
-    authInFlight.current = true;
     setBusy(true);
     setError("");
     try {
       const res = await request("/api/v1/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential, turnstile_token: captchaToken.current })
+        body: JSON.stringify({ credential })
       });
 
       if (res.is_admin && res.admin_token) {
@@ -617,8 +597,6 @@ export default function Home() {
     } catch (e) {
       alertError(e);
     } finally {
-      authInFlight.current = false;
-      resetCaptcha();
       setBusy(false);
     }
   }
@@ -690,19 +668,13 @@ export default function Home() {
       setError("Vui lòng nhập Mật khẩu Quản trị (Admin API Key).");
       return;
     }
-    if (authInFlight.current) return;
-    if (captchaEnabled && !captchaToken.current) {
-      setError("Vui lòng hoàn thành xác minh CAPTCHA trước khi đăng nhập.");
-      return;
-    }
-    authInFlight.current = true;
     setBusy(true);
     setError("");
     try {
       const res = await request("/api/v1/auth/admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, turnstile_token: captchaToken.current })
+        body: JSON.stringify({ key })
       });
       // Issued opaque session token (8h TTL)
       const sessionToken = res.token || key;
@@ -722,8 +694,6 @@ export default function Home() {
     } catch (e) {
       alertError(e);
     } finally {
-      authInFlight.current = false;
-      resetCaptcha();
       setBusy(false);
     }
   }
@@ -1788,8 +1758,6 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <Turnstile key={`google-${captchaVersion}`} action="google_login" onToken={updateCaptcha} />
-                  {captchaEnabled && !captchaReady && <p role="status">Vui lòng xác minh CAPTCHA trước khi chọn tài khoản Google.</p>}
                   {/* Google Login Section */}
                   <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                     <div id="google-signin-btn-container" style={{ width: "100%", minHeight: 44, display: "flex", justifyContent: "center" }} />
@@ -1822,10 +1790,9 @@ export default function Home() {
                 />
               </label>
 
-              <Turnstile key={`admin-${captchaVersion}`} action="admin_login" onToken={updateCaptcha} />
               <button
                 style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", marginTop: 4 }}
-                disabled={busy || (captchaEnabled && !captchaReady)}
+                disabled={busy}
                 onClick={handleAdminLogin}
               >
                 Đăng nhập quản trị
