@@ -473,9 +473,15 @@ def test_drive_cleanup_duplicates(tmp_path, monkeypatch):
         """, (pid, prompt1))
 
     # 5. Trigger cleanup
+    from unittest.mock import Mock
+    monkeypatch.setattr("app.drive_cleanup_job.Thread", Mock())
     res = client.post("/api/v1/admin/drive/cleanup-duplicates", headers=ADMIN)
-    assert res.status_code == 200
-    data = res.json()
+    assert res.status_code == 202
+    from app.drive_cleanup_job import _run_cleanup
+    _run_cleanup(main.db, res.json()["job_id"])
+    status = client.get("/api/v1/admin/drive/cleanup-status", headers=ADMIN).json()
+    assert status["status"] == "success"
+    data = status["result"]
     assert data["status"] == "success"
     # Names/question numbers alone are insufficient evidence to delete recordings.
     assert data["deleted_folders_count"] == 0

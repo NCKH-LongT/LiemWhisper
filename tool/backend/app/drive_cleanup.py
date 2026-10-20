@@ -8,7 +8,7 @@ FOLDER = "application/vnd.google-apps.folder"
 
 
 @serialized_drive
-def cleanup_duplicates(db_factory, drive):
+def cleanup_duplicates(db_factory, drive, progress=None):
     from app.worker import participant_folder, sync_drive_manifest_csv
 
     with db_factory() as c:
@@ -21,6 +21,10 @@ def cleanup_duplicates(db_factory, drive):
         all_active_ids = {r["drive_file_id"] for r in c.execute(
             "SELECT drive_file_id FROM recordings WHERE drive_file_id IS NOT NULL"
         ).fetchall()}
+    report = progress or (lambda *args: None)
+    total = len(recordings)
+    completed = 0
+    report("Đang đọc danh sách thư mục", completed, total)
     root_items = drive.list_children(drive.folder_id)
     folders = [f for f in root_items if f.get("mimeType") == FOLDER]
     by_name = defaultdict(list)
@@ -47,18 +51,25 @@ def cleanup_duplicates(db_factory, drive):
             items.extend(drive.list_children(folder_id))
         item_map = {f["id"]: f for f in items}
         for r in owned:
+            report("Đang kiểm tra bản thu", completed, total)
+            completed += 1
             canonical = item_map.get(r["drive_file_id"])
             if not canonical:
                 preserved += 1
                 continue
             expected = r["sha256"]
+            duplicates = [f for f in items if f["id"] not in all_active_ids
+                          and f.get("mimeType") != FOLDER and f["name"] == canonical["name"]]
+            if not duplicates and primary in canonical.get("parents", []):
+                # Already in the right place, with no duplicate candidates.
+                continue
             if hashlib.sha256(drive.download(canonical["id"])).hexdigest() != expected:
                 preserved += 1
                 continue
             if not drive.move_and_rename_file(canonical["id"], canonical["name"], primary):
                 preserved += 1
                 continue
-            for duplicate in items:
+            for duplicate in duplicates:
                 did = duplicate["id"]
                 if did in all_active_ids or duplicate.get("mimeType") == FOLDER:
                     continue
@@ -89,6 +100,7 @@ def cleanup_duplicates(db_factory, drive):
             drive.trash(folder_id)
             deleted_folders += 1
             merged += 1
+    report("Đang cập nhật danh sách bản thu", total, total)
     sync_drive_manifest_csv(db_factory, drive)
     return {
         "status": "success", "merged_folders_count": merged,

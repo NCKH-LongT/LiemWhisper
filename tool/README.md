@@ -120,3 +120,11 @@ environment: https://developers.cloudflare.com/turnstile/troubleshooting/testing
   confirms they are empty. No recordings are deleted from SQL by cleanup.
 - Cleanup cannot infer ownership from question numbers alone. Items preserved
   for manual inspection may remain in older duplicate folders.
+- Cleanup starts a background job and returns HTTP 202 immediately. The admin
+  page polls `/api/v1/admin/drive/cleanup-status` with its session header and shows
+  the current phase and recording count. Repeated clicks reuse the active job.
+  Progress survives page reloads; a job without progress for five minutes is
+  marked interrupted so it can be retried safely after a backend restart.
+- Routine sync no longer rescans every previously synced file. Cleanup skips
+  downloading audio already in its canonical folder when no duplicate name is
+  present. Duplicate candidates still require full content verification.

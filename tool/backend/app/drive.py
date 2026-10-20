@@ -162,12 +162,18 @@ def register_drive_routes(app: FastAPI, db: Callable[[], Any], admin: Callable[[
         if request.query_params.get("key") or request.query_params.get("x_admin_key"):
             raise HTTPException(403, "Admin credential must be in header")
         admin(x_admin_key)
-        from app.drive_cleanup import cleanup_duplicates
+        from app.drive_cleanup_job import start_cleanup
         try:
-            return cleanup_duplicates(db, get_drive_client(db))
+            return JSONResponse(start_cleanup(db), status_code=202)
         except Exception as exc:
             logging.getLogger(__name__).exception("Drive cleanup failed")
             raise HTTPException(502, "Không thể hoàn tất sắp xếp Drive. Dữ liệu chưa xác minh được giữ lại.") from exc
+
+    @app.get("/api/v1/admin/drive/cleanup-status")
+    def get_cleanup_status(x_admin_key: str | None = Header(None, alias="x-admin-key")):
+        admin(x_admin_key)
+        from app.drive_cleanup_job import cleanup_status
+        return cleanup_status(db)
 
     @app.post("/api/v1/admin/drive/connect")
     def connect_drive(

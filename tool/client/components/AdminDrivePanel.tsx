@@ -59,6 +59,7 @@ export function AdminDrivePanel({
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [cleanupJobId, setCleanupJobId] = useState("");
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [cleanNotice, setCleanNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,44 @@ export function AdminDrivePanel({
   const statusText = formatDriveStatusText(driveStatus);
 
   const { confirmAction, modal } = useConfirmation();
+
+  // Resume progress after a refresh; cleanup runs independently of this tab.
+  useEffect(() => {
+    if (!adminToken) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    async function poll() {
+      try {
+        const res = await fetch(`${apiBase.replace(/\/+$/, "")}/api/v1/admin/drive/cleanup-status`, {
+          headers: { "x-admin-key": adminToken }, signal: controller.signal
+        });
+        if (!res.ok) throw new Error(`Không đọc được tiến độ (${res.status}).`);
+        const data = await res.json();
+        if (stopped) return;
+        if (data.status === "running") {
+          setCleaning(true);
+          setCleanNotice(`${data.phase}${data.total ? ` (${data.processed}/${data.total} bản thu)` : ""}`);
+          timer = setTimeout(poll, 2000);
+        } else if (data.status === "success" || data.status === "failed") {
+          setCleaning(false);
+          if (data.status === "success") {
+            setCleanNotice(data.result?.message || data.phase);
+            refreshStatus();
+          } else {
+            setCleanNotice(null);
+            setError(data.phase);
+          }
+        }
+      } catch (err) {
+        if (stopped) return;
+        if (cleanupJobId) setCleanNotice("Đang kết nối lại để đọc tiến độ. Tác vụ tiếp tục chạy trên máy chủ.");
+        timer = setTimeout(poll, 5000);
+      }
+    }
+    poll();
+    return () => { stopped = true; clearTimeout(timer); controller.abort(); };
+  }, [apiBase, adminToken, cleanupJobId]);
 
   async function handleCleanupDuplicates() {
     if (!adminToken) return;
@@ -95,11 +134,14 @@ export function AdminDrivePanel({
         throw new Error(msg);
       }
       const data = await res.json();
-      setCleanNotice(data.message || "Đã dọn dẹp bản sao trùng lặp thành công!");
-      refreshStatus();
+      setCleanNotice(data.phase || "Đang chờ lượt đồng bộ Drive");
+      setCleanupJobId(data.job_id);
+      if (data.status !== "running") {
+        setCleaning(false);
+        if (data.status === "failed") setError(data.phase);
+      }
     } catch (err) {
       setError(sanitizeApiError(err));
-    } finally {
       setCleaning(false);
     }
   }

@@ -1020,7 +1020,7 @@ export default function Home() {
     const k = keyOverride || adminKey;
     if (!k) return;
     try {
-      const data: DriveStatusResponse = await request("/api/v1/admin/drive/status", {
+      const data: DriveStatusResponse = await request("/api/v1/admin/drive/status?counts=1", {
         headers: { "x-admin-key": k }
       });
       setDriveStatus(data);

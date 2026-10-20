@@ -356,9 +356,8 @@ def process_all_outbox(
         except Exception:
             pass
 
-    if client and hasattr(client, "upload_or_update_file"):
+    if total and client and hasattr(client, "upload_or_update_file"):
         try:
-            organize_existing_drive_files(db_factory, client)
             sync_drive_manifest_csv(db_factory, client)
         except Exception as exc:
             logger.warning("Error organizing Drive files / updating manifest CSV: %s", exc)

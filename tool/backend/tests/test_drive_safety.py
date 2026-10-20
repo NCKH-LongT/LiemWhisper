@@ -196,3 +196,63 @@ def test_sqlite_lock_excludes_another_process(tmp_path):
         if child and child.poll() is None:
             child.kill()
             child.wait()
+
+
+def test_no_full_rescan_or_manifest_upload_when_queue_empty(recording):
+    from app.worker import process_all_outbox
+    drive = Drive()
+    process_outbox(db, drive)
+    drive.move_and_rename_file = Mock(side_effect=AssertionError("unexpected full scan"))
+    drive.upload_or_update_file = Mock(side_effect=AssertionError("unexpected CSV upload"))
+    assert process_all_outbox(db, drive) == 0
+    drive.move_and_rename_file.assert_not_called()
+    drive.upload_or_update_file.assert_not_called()
+
+
+def test_clean_library_needs_no_audio_download(recording):
+    drive = Drive()
+    process_outbox(db, drive)
+    drive.download = Mock(side_effect=AssertionError("unnecessary download"))
+    cleanup_duplicates(db, drive)
+    drive.download.assert_not_called()
+
+
+def test_cleanup_job_returns_promptly_and_duplicate_click_reuses_job(recording, monkeypatch):
+    from app import drive_cleanup_job as jobs
+    thread = Mock()
+    monkeypatch.setattr(jobs, "Thread", thread)
+    first = jobs.start_cleanup(db)
+    second = jobs.start_cleanup(db)
+    assert first["status"] == "running"
+    assert first["job_id"] == second["job_id"]
+    assert thread.call_count == 1
+    drive = Drive()
+    process_outbox(db, drive)
+    monkeypatch.setattr("app.drive.get_drive_client", lambda _: drive)
+    jobs._run_cleanup(db, first["job_id"])
+    status = jobs.cleanup_status(db)
+    assert status["status"] == "success"
+    assert status["processed"] == status["total"] == 1
+    assert status["result"]["deleted_files_count"] == 0
+
+
+def test_interrupted_job_can_be_restarted(recording, monkeypatch):
+    from app import drive_cleanup_job as jobs
+    monkeypatch.setattr(jobs, "Thread", Mock())
+    first = jobs.start_cleanup(db)
+    with db() as c:
+        c.execute("UPDATE drive_cleanup_state SET updated_at=1")
+    assert jobs.cleanup_status(db)["status"] == "failed"
+    second = jobs.start_cleanup(db)
+    assert second["job_id"] != first["job_id"]
+
+
+def test_busy_lock_fails_fast_in_other_thread(recording):
+    from app.drive_lock import drive_lock, DriveBusy
+    def attempt():
+        with pytest.raises(DriveBusy):
+            with drive_lock(db, blocking=False):
+                raise AssertionError("lock should not be acquired")
+    with drive_lock(db):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(attempt).result(timeout=3)

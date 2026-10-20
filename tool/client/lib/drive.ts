@@ -66,7 +66,7 @@ export function buildDriveConnectRequest(adminToken: string): { url: string; ini
 
 export function buildDriveStatusRequest(adminToken: string): { url: string; init: RequestInit } {
   return {
-    url: "/api/v1/admin/drive/status",
+    url: "/api/v1/admin/drive/status?counts=1",
     init: {
       method: "GET",
       headers: {

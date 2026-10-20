@@ -48,7 +48,7 @@ test("buildDriveConnectRequest mandates x-admin-key header and no cross-site coo
 
 test("buildDriveStatusRequest uses header and avoids query credentials", () => {
   const req = buildDriveStatusRequest("session_token_xyz");
-  assert.strictEqual(req.url, "/api/v1/admin/drive/status");
+  assert.strictEqual(req.url, "/api/v1/admin/drive/status?counts=1");
   assert.strictEqual(req.init.method, "GET");
   const headers = req.init.headers as Record<string, string>;
   assert.strictEqual(headers["x-admin-key"], "session_token_xyz");
