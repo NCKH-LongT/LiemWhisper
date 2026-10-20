@@ -13,8 +13,8 @@ Render Free chặn SMTP, nên không dùng SMTP Gmail trên gói này.
 4. Triển khai backend mới trên Render và frontend mới trên Vercel.
 5. Đăng nhập quản trị LiemWhisper, chọn **Liên kết lại Google Drive**,
    dùng đúng tài khoản đang lưu dữ liệu và đồng ý quyền gửi email.
-6. Mục **Thư cảm ơn** hiển thị tài khoản gửi và trạng thái từng thư.
-   Khi đã sửa cấu hình, chọn **Thử gửi lại** cho những thư thất bại.
+6. Thư tự gửi khi người tham gia hoàn thành. Không có bảng hoặc nút gửi thư trong admin.
+   Khi đã sửa cấu hình, worker tự thử lại những thư thất bại có thể phục hồi.
 
 Nếu ứng dụng OAuth còn ở chế độ Testing, tài khoản gửi phải có trong Test users.
 Tuân theo yêu cầu xác minh của Google trước khi mở ứng dụng cho người dùng ngoài.
@@ -29,7 +29,9 @@ Render Free có thể ngủ khi không hoạt động; thư pending tiếp tục
 
 - `pending` / `sending`: chờ gửi / đang gửi.
 - `sent`: dịch vụ gửi thư đã chấp nhận; không bảo đảm thư vào inbox thay vì Spam.
-- `failed`: gửi thất bại đã xác định; quản trị viên có thể thử lại.
+- `failed`: gửi thất bại đã xác định. Lỗi quyền, cấu hình, xác thực hoặc giới hạn
+  gửi được thử lại tự động sau 1 phút, tăng gấp đôi đến tối đa 1 giờ.
+  Địa chỉ không hợp lệ hoặc thư bị từ chối không được gửi lại tự động.
 - `unknown`: mất kết nối hoặc worker dừng giữa chừng; có thể thư đã gửi.
   Kiểm tra mục Sent của Gmail. Không tự gửi lại trạng thái này để tránh trùng.
 - `untracked`: phiên hoàn thành trước khi có theo dõi; không tự động gửi lại.

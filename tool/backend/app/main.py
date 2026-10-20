@@ -46,7 +46,7 @@ from app.storage import (
     stream_audio_response,
     validate_storage_backend,
 )
-from app.email_delivery import init_email_tables, enqueue_email, delivery_status, process_email_queue, register_email_routes
+from app.email_delivery import init_email_tables, enqueue_email, delivery_status, process_email_queue
 from app.worker import enqueue_delete_job
 from app.turnstile import verify_turnstile
 
@@ -167,7 +167,6 @@ def admin(x_admin_key: str | None = None, key: str | None = None):
 
 
 register_drive_routes(app, db, admin)
-register_email_routes(app, db, admin)
 
 
 def participant(x_participant_token: str | None = None, token: str | None = None):

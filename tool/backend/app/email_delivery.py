@@ -1,4 +1,4 @@
-"""Durable thank-you delivery with atomic claiming and explicit failed retries."""
+"""Durable thank-you delivery with atomic claiming and automatic retries."""
 import logging
 import time
 
@@ -48,6 +48,15 @@ def process_email_queue(db, limit=5):
         # A crash after send may have delivered the email. Never retry blindly.
         c.execute("""UPDATE email_deliveries SET status='unknown',reason='delivery_unknown'
             WHERE status='sending' AND updated_at < ?""", (now - 300,))
+        # Retry only confirmed failures. Ambiguous sends remain unknown to prevent duplicates.
+        failed = c.execute("SELECT participant_id,reason,attempts,updated_at FROM email_deliveries WHERE status='failed'").fetchall()
+        retryable = {"gmail_not_connected", "gmail_permission_required", "gmail_reconnect_required",
+                     "gmail_permission_or_api_disabled", "gmail_rate_limited", "smtp_not_configured", "smtp_auth_failed"}
+        for row in failed:
+            delay = min(3600, 60 * (2 ** min(max(row["attempts"] - 1, 0), 6)))
+            if row["reason"] in retryable and now - row["updated_at"] >= delay:
+                c.execute("UPDATE email_deliveries SET status='pending' WHERE participant_id=? AND status='failed'",
+                          (row["participant_id"],))
         pending = c.execute("SELECT participant_id FROM email_deliveries WHERE status='pending' ORDER BY updated_at LIMIT ?", (limit,)).fetchall()
     for item in pending:
         pid = item["participant_id"]
@@ -70,39 +79,11 @@ def process_email_queue(db, limit=5):
             logging.getLogger(__name__).exception("Thank-you email worker failed")
             result = {"sent": False, "status": "unknown", "reason": "delivery_unknown"}
         status = "sent" if result.get("sent") else ("unknown" if result.get("status") == "unknown" else "failed")
+        if status != "sent":
+            logging.getLogger(__name__).warning(
+                "Thank-you delivery status=%s reason=%s", status, result.get("reason", "unspecified")
+            )
         with db() as c:
             c.execute("""UPDATE email_deliveries SET status=?,reason=?,provider_message_id=?,updated_at=?
                 WHERE participant_id=? AND status IN ('sending','unknown')""",
                 (status, result.get("reason"), result.get("message_id"), int(time.time()), pid))
-
-
-def register_email_routes(app, db, admin):
-    from fastapi import Header, HTTPException
-    import os
-
-    @app.get("/api/v1/admin/email/status")
-    def email_status(x_admin_key: str | None = Header(None)):
-        admin(x_admin_key)
-        with db() as c:
-            account = c.execute("SELECT account_email FROM drive_connection WHERE id='default'").fetchone()
-            grant = c.execute("SELECT scopes FROM gmail_authorization WHERE id='default'").fetchone()
-            rows = c.execute("""SELECT e.*, p.email, p.name, p.participant_code
-                FROM email_deliveries e JOIN participants p ON p.id=e.participant_id
-                ORDER BY e.updated_at DESC LIMIT 100""").fetchall()
-        return {
-            "provider": os.getenv("EMAIL_PROVIDER", "gmail_api"),
-            "sender": account["account_email"] if account else None,
-            "permission_granted": bool(grant and "https://www.googleapis.com/auth/gmail.send" in grant["scopes"].split()),
-            "deliveries": [{**dict(r), "message": REASONS.get(r["reason"], "")} for r in rows],
-        }
-
-    @app.post("/api/v1/admin/email/{participant_id}/retry")
-    def retry_email(participant_id: str, x_admin_key: str | None = Header(None)):
-        admin(x_admin_key)
-        with db() as c:
-            row = c.execute("""UPDATE email_deliveries SET status='pending',reason=NULL,updated_at=?
-                WHERE participant_id=? AND status='failed' RETURNING participant_id""",
-                (int(time.time()), participant_id)).fetchone()
-        if not row:
-            raise HTTPException(409, "Chỉ thử lại thư đã xác nhận gửi thất bại.")
-        return {"status": "pending"}

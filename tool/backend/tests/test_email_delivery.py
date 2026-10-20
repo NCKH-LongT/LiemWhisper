@@ -28,16 +28,37 @@ def test_failed_retry_and_unknown_are_not_resent(tmp_path, monkeypatch):
     process_email_queue(db)
     assert sender.call_count == 1
     url = "/api/v1/admin/email/mail-p/retry"
-    assert client.post(url).status_code == 403
+    assert client.post(url).status_code == 404
     headers = {"x-admin-key": "test-only-admin-secret"}
-    assert client.post(url, headers=headers).status_code == 200
+    assert client.post(url, headers=headers).status_code == 404
+    with db() as c:
+        c.execute("UPDATE email_deliveries SET updated_at=updated_at-61")
     sender.return_value = {"sent": False, "status": "unknown", "reason": "delivery_unknown"}
     process_email_queue(db)
-    assert client.post(url, headers=headers).status_code == 409
     process_email_queue(db)
     assert sender.call_count == 2
-    status = client.get("/api/v1/admin/email/status", headers=headers).json()
-    assert status["deliveries"][0]["status"] == "unknown"
+    with db() as c:
+        assert c.execute("SELECT status FROM email_deliveries").fetchone()[0] == "unknown"
+
+
+def test_automatic_retry_recovers_and_stops_after_success(tmp_path, monkeypatch):
+    _, db = prepare(tmp_path, monkeypatch)
+    from app.email_delivery import process_email_queue
+    sender = Mock(side_effect=[
+        {"sent": False, "reason": "gmail_rate_limited"},
+        {"sent": True, "message_id": "recovered"},
+    ])
+    monkeypatch.setattr("app.mailer.send_thank_you_email", sender)
+    process_email_queue(db)
+    process_email_queue(db)
+    assert sender.call_count == 1
+    with db() as c:
+        c.execute("UPDATE email_deliveries SET updated_at=updated_at-61")
+    process_email_queue(db)
+    process_email_queue(db)
+    assert sender.call_count == 2
+    with db() as c:
+        assert c.execute("SELECT status FROM email_deliveries").fetchone()[0] == "sent"
 
 
 @pytest.mark.parametrize("outcome, expected", [("success", True), ("denied", False), ("timeout", False)])

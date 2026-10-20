@@ -13,7 +13,6 @@ import {
 } from "../lib/security";
 import { DriveStatusResponse } from "../lib/drive";
 import { downloadAuthenticatedExport } from "../lib/auth-fetch";
-import { AdminEmailPanel } from "../components/AdminEmailPanel";
 import { AdminDrivePanel } from "../components/AdminDrivePanel";
 import { Turnstile } from "../components/Turnstile";
 import { AuthenticatedAudioPlayer } from "../components/AuthenticatedAudioPlayer";
@@ -2011,7 +2010,7 @@ export default function Home() {
               </div>
 
               <div style={{ background: "var(--success-bg)", color: "var(--success)", padding: "12px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, maxWidth: 500, margin: "0 auto 28px" }}>
-                <svg className="mail-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg> {participantInfo?.email_delivery?.status === "sent" ? "Gmail đã nhận thư cảm ơn để gửi. Bạn hãy kiểm tra hộp thư đến hoặc Spam." : ["pending", "sending"].includes(participantInfo?.email_delivery?.status || "") ? "Thư cảm ơn đang chờ gửi. Kết quả thu âm của bạn đã được ghi nhận." : "Chưa xác nhận gửi được thư cảm ơn. Kết quả thu âm của bạn đã được ghi nhận; quản trị viên có thể kiểm tra trạng thái gửi."}
+                <svg className="mail-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg> {participantInfo?.email_delivery?.status === "sent" ? "Gmail đã nhận thư cảm ơn để gửi. Bạn hãy kiểm tra hộp thư đến hoặc Spam." : ["pending", "sending"].includes(participantInfo?.email_delivery?.status || "") ? "Thư cảm ơn đang chờ gửi. Kết quả thu âm của bạn đã được ghi nhận." : "Chưa xác nhận gửi được thư cảm ơn. Kết quả thu âm của bạn đã được ghi nhận; hệ thống đang theo dõi việc gửi thư."}
               </div>
 
               <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
@@ -2490,8 +2489,6 @@ export default function Home() {
             driveStatus={driveStatus}
             onStatusUpdated={(s) => setDriveStatus(s)}
           />
-
-          <AdminEmailPanel apiBase={API} adminToken={adminKey} />
 
           {/* Admin Navigation Bar */}
           <section className="admin-navigation" aria-label="Điều hướng quản trị">
