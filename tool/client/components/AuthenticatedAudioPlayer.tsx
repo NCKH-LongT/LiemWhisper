@@ -10,7 +10,16 @@ interface AuthenticatedAudioPlayerProps {
   style?: React.CSSProperties;
 }
 
-export function AuthenticatedAudioPlayer({
+export function AuthenticatedAudioPlayer(props: AuthenticatedAudioPlayerProps) {
+  return (
+    <LazyAudioPlayer
+      key={JSON.stringify([props.apiBase, props.audioPath, props.authHeader.name, props.authHeader.value])}
+      {...props}
+    />
+  );
+}
+
+function LazyAudioPlayer({
   apiBase,
   audioPath,
   authHeader,
@@ -19,10 +28,12 @@ export function AuthenticatedAudioPlayer({
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requested, setRequested] = useState(0);
   const currentUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
+    const controller = new AbortController();
 
     // Revoke previous object URL
     if (currentUrlRef.current) {
@@ -32,7 +43,7 @@ export function AuthenticatedAudioPlayer({
     setObjectUrl(null);
     setError(null);
 
-    if (!audioPath || !authHeader.value) {
+    if (!requested || !audioPath || !authHeader.value) {
       return;
     }
 
@@ -41,6 +52,7 @@ export function AuthenticatedAudioPlayer({
     const fullUrl = `${apiBase}${audioPath}`;
     fetch(fullUrl, {
       method: "GET",
+      signal: controller.signal,
       headers: {
         [authHeader.name]: authHeader.value
       }
@@ -75,12 +87,13 @@ export function AuthenticatedAudioPlayer({
 
     return () => {
       isCancelled = true;
+      controller.abort();
       if (currentUrlRef.current) {
         URL.revokeObjectURL(currentUrlRef.current);
         currentUrlRef.current = null;
       }
     };
-  }, [apiBase, audioPath, authHeader.name, authHeader.value]);
+  }, [apiBase, audioPath, authHeader.name, authHeader.value, requested]);
 
   if (loading) {
     return (
@@ -113,21 +126,32 @@ export function AuthenticatedAudioPlayer({
         }}
       >
         Lỗi phát âm thanh: {error}
+        <button type="button" onClick={() => setRequested((attempt) => attempt + 1)} style={{ marginLeft: 8 }}>
+          Thử lại
+        </button>
       </div>
     );
   }
 
   if (!objectUrl) {
     return (
-      <div style={{ fontSize: 13, color: "var(--muted)", ...style }}>
-        Không có dữ liệu âm thanh
-      </div>
+      <button
+        type="button"
+        disabled={!audioPath || !authHeader.value || requested > 0}
+        onClick={() => setRequested((attempt) => attempt + 1)}
+        aria-label="Phát âm thanh"
+        style={{ padding: "8px 12px", borderRadius: 6, ...style }}
+      >
+        ▶ Play — Bấm để tải và phát
+      </button>
     );
   }
 
   return (
     <audio
       controls
+      autoPlay
+      preload="none"
       src={objectUrl}
       style={{
         width: "100%",
