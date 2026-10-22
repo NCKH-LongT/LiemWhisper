@@ -278,7 +278,7 @@ class GoogleOnboardInput(BaseModel):
     temp_token: str
     consent: bool
     consent_version: str = Field(default="v1.0", min_length=1, max_length=30)
-    participant_code: str = Field(default="", max_length=60)
+    participant_code: str = Field(min_length=1, max_length=60)
     english_level: str = Field(min_length=1, max_length=100)
     class_name: str = Field(default="", max_length=100)
     referring_lecturer: str = Field(default="", max_length=150)
@@ -838,6 +838,8 @@ def auth_google(data: GoogleAuthInput, request: Request):
 @app.post("/api/v1/auth/google/onboard")
 def auth_google_onboard(data: GoogleOnboardInput, request: Request):
     """Complete first-time Google participant onboarding with consent and survey."""
+    if not data.participant_code.strip():
+        raise HTTPException(422, "Vui lòng nhập MSSV / Mã sinh viên.")
     if not data.english_level.strip():
         raise HTTPException(422, "Vui lòng chọn trình độ tiếng Anh.")
     if not data.consent:
@@ -853,8 +855,6 @@ def auth_google_onboard(data: GoogleOnboardInput, request: Request):
             raise HTTPException(401, "Phiên xác thực Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại Google.")
 
         code = data.participant_code.strip()
-        if not code:
-            code = extract_student_code(row["email"]) or f"P_{secrets.token_hex(3).upper()}"
 
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("user-agent", "")[:250]

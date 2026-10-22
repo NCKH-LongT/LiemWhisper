@@ -97,6 +97,7 @@ test("Google onboarding requires an explicit CEFR choice before submission", asy
   await ui.submit().props.onClick();
   assert.equal(ui.requests.filter(request => request.path.endsWith("/onboard")).length, 0);
   english.props.onChange({ target: { value: "Chưa rõ" } });
+  ui.field("participant_code").props.onChange({ target: { value: "SE123456" } });
   assert.equal(ui.submit().props.disabled, false);
   ui.find(node => node.type === "button" && node.props.children === "Đổi tài khoản").props.onClick();
   await ui.start();
@@ -104,17 +105,24 @@ test("Google onboarding requires an explicit CEFR choice before submission", asy
 });
 
 
-test("Google onboarding sends optional student details and preserves survey fields", async () => {
+test("Google onboarding requires student ID and preserves survey fields", async () => {
   const ui = onboardingHarness();
   await ui.start();
   for (const [name, maxLength] of [["participant_code", 60], ["class_name", 100], ["referring_lecturer", 150]] as const) {
     const field = ui.field(name);
     assert.ok(field, `${name} input must be present`);
-    assert.equal(field.props.required, undefined);
+    assert.equal(field.props.required, name === "participant_code" ? true : undefined);
     assert.equal(field.props.maxLength, maxLength);
     assert.equal(field.props.value, "");
   }
   ui.field("english_level").props.onChange({ target: { value: "B2" } });
+  ui.find(node => node.type === "input" && node.props.type === "checkbox").props.onChange({ target: { checked: true } });
+  for (const value of ["", "   "]) {
+    ui.field("participant_code").props.onChange({ target: { value } });
+    assert.equal(ui.submit().props.disabled, true);
+    await ui.submit().props.onClick();
+    assert.equal(ui.requests.filter(request => request.path.endsWith("/onboard")).length, 0);
+  }
   ui.field("participant_code").props.onChange({ target: { value: "  SE194007  " } });
   ui.field("class_name").props.onChange({ target: { value: "  SE19  " } });
   ui.field("referring_lecturer").props.onChange({ target: { value: "  Nguyễn Văn An  " } });

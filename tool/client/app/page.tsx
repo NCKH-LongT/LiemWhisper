@@ -636,6 +636,10 @@ export default function Home() {
   }
 
   async function handleCompleteGoogleOnboard() {
+    if (!participantCode.trim()) {
+      setError("Vui lòng nhập MSSV / Mã sinh viên.");
+      return;
+    }
     if (!consent) {
       setError("Vui lòng xác nhận tự nguyện tham gia nghiên cứu (Consent v1.0).");
       return;
@@ -1684,14 +1688,15 @@ export default function Home() {
                     </select>
                   </label>
 
-                  {/* Mã sinh viên (Không bắt buộc) */}
+                  {/* Mã sinh viên (Bắt buộc) */}
                   <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 14 }}>
-                    MSSV / Mã sinh viên <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Không bắt buộc):</span>
+                    MSSV / Mã sinh viên <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Bắt buộc):</span>
                     <input
                       style={styles.field}
                       name="participant_code"
+                      required
                       maxLength={60}
-                      placeholder="Ví dụ: SE194007 (để trống hệ thống tự cấp mã ẩn danh)"
+                      placeholder="Ví dụ: SE194007"
                       value={participantCode}
                       onChange={(e) => setParticipantCode(e.target.value)}
                     />
@@ -1782,7 +1787,7 @@ export default function Home() {
 
                   <button
                     style={{ ...styles.btnPrimary, width: "100%", justifyContent: "center", height: 42 }}
-                    disabled={!consent || !english || busy}
+                    disabled={!consent || !english || !participantCode.trim() || busy}
                     onClick={handleCompleteGoogleOnboard}
                   >
                     {busy ? "Đang xử lý..." : "Xác nhận & Bắt đầu thu âm"}

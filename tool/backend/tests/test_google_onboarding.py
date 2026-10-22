@@ -36,7 +36,7 @@ def test_google_onboarding_requires_explicit_nonblank_english_level(tmp_path, mo
     token = google_draft(client, monkeypatch)
     for fields in ({}, {"english_level": ""}, {"english_level": "   "}):
         response = client.post("/api/v1/auth/google/onboard", json={
-            "temp_token": token, "consent": True, **fields,
+            "temp_token": token, "consent": True, "participant_code": "SE123456", **fields,
         })
         assert response.status_code == 422
 
@@ -45,11 +45,21 @@ def test_google_onboarding_accepts_omitted_optional_reporting_fields(tmp_path, m
     client = setup_test_app(tmp_path, monkeypatch)
     token = google_draft(client, monkeypatch)
     response = client.post("/api/v1/auth/google/onboard", json={
-        "temp_token": token, "consent": True, "english_level": "Chưa rõ",
+        "temp_token": token, "consent": True, "english_level": "Chưa rõ", "participant_code": "SE123456",
     })
     assert response.status_code == 200
     me = client.get("/api/v1/participants/me", headers={"x-participant-token": token}).json()
-    assert me["participant_code"].startswith("P_")
-    assert me["survey"]["student_id"] == ""
+    assert me["participant_code"] == "SE123456"
+    assert me["survey"]["student_id"] == "SE123456"
     assert me["survey"]["class_name"] == ""
     assert me["survey"]["referring_lecturer"] == ""
+
+
+def test_google_onboarding_requires_nonblank_student_id(tmp_path, monkeypatch):
+    client = setup_test_app(tmp_path, monkeypatch)
+    token = google_draft(client, monkeypatch)
+    for fields in ({}, {"participant_code": ""}, {"participant_code": "   "}):
+        response = client.post("/api/v1/auth/google/onboard", json={
+            "temp_token": token, "consent": True, "english_level": "B1", **fields,
+        })
+        assert response.status_code == 422
