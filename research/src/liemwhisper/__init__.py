@@ -8,6 +8,12 @@ from .evaluation import (
     PairedBootstrapTester,
     LiemWhisperBenchmarkHarness,
 )
+from .baselines import (
+    TaxonomyManager,
+    ExactMatchingBaseline,
+    GlossaryPromptingASR,
+    LexicalFuzzyMatcher,
+)
 
 __all__ = [
     "TextNormalizer",
@@ -17,4 +23,8 @@ __all__ = [
     "SafetyMetricsEvaluator",
     "PairedBootstrapTester",
     "LiemWhisperBenchmarkHarness",
+    "TaxonomyManager",
+    "ExactMatchingBaseline",
+    "GlossaryPromptingASR",
+    "LexicalFuzzyMatcher",
 ]
