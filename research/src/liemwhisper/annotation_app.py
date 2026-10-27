@@ -276,8 +276,14 @@ HTML_CONTENT = """<!DOCTYPE html>
       --accent: #8b5cf6;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-    body { background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    body { background-color: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
     
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
     /* Header */
     header {
       background: var(--card-bg);
@@ -289,6 +295,8 @@ HTML_CONTENT = """<!DOCTYPE html>
       position: sticky;
       top: 0;
       z-index: 100;
+      flex-shrink: 0;
+      height: 65px;
     }
     .logo-area { display: flex; align-items: center; gap: 12px; }
     .logo-badge { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 14px; }
@@ -303,16 +311,16 @@ HTML_CONTENT = """<!DOCTYPE html>
     .progress-fill { height: 100%; background: var(--success); width: 0%; transition: width 0.3s; }
 
     /* Layout */
-    .main-container { display: flex; flex: 1; height: calc(100vh - 65px); }
+    .main-container { display: flex; flex: 1; height: calc(100vh - 65px); max-height: calc(100vh - 65px); overflow: hidden; }
     
     /* Sidebar List */
-    .sidebar { width: 320px; background: #131d31; border-right: 1px solid var(--card-border); display: flex; flex-direction: column; }
-    .sidebar-filter { padding: 12px; border-bottom: 1px solid var(--card-border); display: flex; gap: 6px; }
+    .sidebar { width: 320px; background: #131d31; border-right: 1px solid var(--card-border); display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; flex-shrink: 0; }
+    .sidebar-filter { padding: 12px; border-bottom: 1px solid var(--card-border); display: flex; gap: 6px; flex-shrink: 0; }
     .filter-btn { flex: 1; padding: 6px 4px; font-size: 11px; font-weight: 600; border-radius: 4px; background: var(--card-bg); color: var(--text-muted); border: 1px solid var(--card-border); cursor: pointer; text-align: center; }
     .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .search-box { padding: 8px 12px; background: #0f172a; border-bottom: 1px solid var(--card-border); }
+    .search-box { padding: 8px 12px; background: #0f172a; border-bottom: 1px solid var(--card-border); flex-shrink: 0; }
     .search-input { width: 100%; background: var(--card-bg); border: 1px solid var(--card-border); color: white; padding: 6px 10px; border-radius: 6px; font-size: 12px; }
-    .records-list { flex: 1; overflow-y: auto; }
+    .records-list { flex: 1; min-height: 0; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #475569 #0f172a; }
     .record-item { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; transition: background 0.15s; font-size: 13px; }
     .record-item:hover { background: rgba(59, 130, 246, 0.1); }
     .record-item.active { background: rgba(59, 130, 246, 0.25); border-left: 3px solid var(--primary); }
@@ -324,7 +332,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     .rec-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Work Area */
-    .workspace { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+    .workspace { flex: 1; padding: 24px; overflow-y: scroll; scrollbar-width: thin; scrollbar-color: #475569 #0f172a; display: flex; flex-direction: column; gap: 18px; height: 100%; min-height: 0; }
     .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 18px; }
     
     /* Header Card */
