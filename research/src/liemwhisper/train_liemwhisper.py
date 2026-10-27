@@ -247,8 +247,8 @@ def export_google_colab_notebook(output_ipynb_path: str):
                 "metadata": {},
                 "outputs": [],
                 "source": [
-                    "# 1. Cài đặt các thư viện Deep Learning chuyên dụng cho Speech & NLP\n",
-                    "!pip install -q transformers peft accelerate datasets faster-whisper jiwer rapidfuzz"
+                    "# 1. Cài đặt các thư viện Deep Learning chuyên dụng cho Speech, NLP & Tracking\n",
+                    "!pip install -q transformers peft accelerate datasets faster-whisper jiwer rapidfuzz wandb"
                 ]
             },
             {
@@ -282,8 +282,8 @@ def export_google_colab_notebook(output_ipynb_path: str):
                 "metadata": {},
                 "outputs": [],
                 "source": [
-                    "# 4. Bắt đầu huấn luyện mô hình LiemWhisper Small với LoRA\n",
-                    "!python train_liemwhisper.py --train --epochs 5 --batch-size 4 --grad-accum 4 --fp16"
+                    "# 4. Bắt đầu huấn luyện mô hình LiemWhisper Small với LoRA và theo dõi biểu đồ trên W&B\n",
+                    "!python train_liemwhisper.py --train --epochs 5 --batch-size 4 --grad-accum 4 --fp16 --report-to wandb"
                 ]
             },
             {
@@ -338,6 +338,9 @@ def parse_args():
     parser.add_argument("--train", action="store_true", help="Execute full training")
     parser.add_argument("--merge-only", action="store_true", help="Only merge existing LoRA checkpoint")
     parser.add_argument("--export-colab", action="store_true", help="Export Google Colab notebook")
+    parser.add_argument("--report-to", type=str, default="none", choices=["none", "wandb", "mlflow", "both"], help="Experiment tracking backend (W&B / MLflow)")
+    parser.add_argument("--project-name", type=str, default="liemwhisper", help="Tracking project name")
+    parser.add_argument("--run-name", type=str, default="liemwhisper-small-lora", help="Tracking run name")
     return parser.parse_args()
 
 
@@ -409,6 +412,22 @@ def main():
 
     # 4. Full Training Execution
     if args.train:
+        report_to_list = ["none"]
+        if args.report_to == "wandb":
+            report_to_list = ["wandb"]
+            os.environ["WANDB_PROJECT"] = args.project_name
+            os.environ["WANDB_LOG_MODEL"] = "end"
+        elif args.report_to == "mlflow":
+            report_to_list = ["mlflow"]
+            os.environ["MLFLOW_EXPERIMENT_NAME"] = args.project_name
+            os.environ["MLFLOW_TRACKING_URI"] = f"sqlite:///{os.path.abspath(os.path.join(DATA_DIR, 'mlflow.db')).replace(os.sep, '/')}"
+        elif args.report_to == "both":
+            report_to_list = ["wandb", "mlflow"]
+            os.environ["WANDB_PROJECT"] = args.project_name
+            os.environ["WANDB_LOG_MODEL"] = "end"
+            os.environ["MLFLOW_EXPERIMENT_NAME"] = args.project_name
+            os.environ["MLFLOW_TRACKING_URI"] = f"sqlite:///{os.path.abspath(os.path.join(DATA_DIR, 'mlflow.db')).replace(os.sep, '/')}"
+
         training_args = Seq2SeqTrainingArguments(
             output_dir=args.output_dir,
             per_device_train_batch_size=args.batch_size,
@@ -426,7 +445,8 @@ def main():
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
-            report_to=["none"]
+            report_to=report_to_list,
+            run_name=args.run_name
         )
 
         trainer = Seq2SeqTrainer(
