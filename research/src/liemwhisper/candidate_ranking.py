@@ -315,11 +315,17 @@ class AcousticTeacherForcingScorer:
     under the frozen Whisper Small decoder via CTranslate2 align API.
     """
 
-    def __init__(self, model_size: str = "small", device: str = "cuda", compute_type: str = "float16"):
+    def __init__(
+        self,
+        model_size: str = "small",
+        device: str = "cuda",
+        compute_type: str = "float16",
+        whisper_model: Optional[Any] = None
+    ):
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
-        self.whisper_model = None
+        self.whisper_model = whisper_model
         self.tokenizer = None
         self.start_sequence = None
         self._audio_cache: Dict[str, Tuple[Any, int]] = {}  # audio_path -> (ct2_storage, num_frames)
@@ -334,6 +340,7 @@ class AcousticTeacherForcingScorer:
                 print(f"[AcousticScorer] Falling back to CPU int8: {e}")
                 self.whisper_model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
 
+        if self.tokenizer is None:
             self.tokenizer = self.whisper_model.hf_tokenizer
             # Start sequence: <|startoftranscript|>, <|vi|>, <|transcribe|>, <|notimestamps|>
             self.start_sequence = [
@@ -714,32 +721,48 @@ class ProposedSystemP:
     def process_utterance(
         self,
         asr_transcript: str,
-        audio_path: Optional[str] = None
+        audio_path: Optional[str] = None,
+        return_timing: bool = False
     ) -> Dict[str, Any]:
         """
         Executes Candidate Generation -> Acoustic/Context Scoring -> Decision Gate -> Category Mapping.
         """
+        import time as _t
+        t_start = _t.perf_counter()
+        t_gen_ms = 0.0
+        t_ctx_ms = 0.0
+        t_acoust_ms = 0.0
+        t_gate_ms = 0.0
+
         if not asr_transcript or pd.isna(asr_transcript):
-            return {
+            res = {
                 "original_transcript": "",
                 "revised_transcript": "",
                 "predicted_terms": [],
                 "accepted_changes": [],
                 "all_evaluated_spans": []
             }
+            if return_timing:
+                res["timing"] = {"t_gen_ms": 0.0, "t_ctx_ms": 0.0, "t_acoust_ms": 0.0, "t_gate_ms": 0.0, "t_post_ms": 0.0}
+            return res
 
         words = TextNormalizer.word_tokenize(asr_transcript)
         n_words = len(words)
         if n_words == 0:
-            return {
+            res = {
                 "original_transcript": asr_transcript,
                 "revised_transcript": asr_transcript,
                 "predicted_terms": [],
                 "accepted_changes": [],
                 "all_evaluated_spans": []
             }
+            if return_timing:
+                res["timing"] = {"t_gen_ms": 0.0, "t_ctx_ms": 0.0, "t_acoust_ms": 0.0, "t_gate_ms": 0.0, "t_post_ms": 0.0}
+            return res
 
+        t_g0 = _t.perf_counter()
         raw_candidates = self.generator.generate_candidates(asr_transcript)
+        t_gen_ms = (_t.perf_counter() - t_g0) * 1000.0
 
         # Group candidates by span (start, end)
         spans_map: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
@@ -766,7 +789,9 @@ class ProposedSystemP:
             # Sentence context: words outside span
             ctx_words = words[:start] + words[end:]
             ctx_text = " ".join(ctx_words)
+            t_c0 = _t.perf_counter()
             ctx_sim = self.context_scorer.compute_context_compatibility(ctx_text, term)
+            t_ctx_ms += (_t.perf_counter() - t_c0) * 1000.0
 
             # Candidate hypothesis sentence
             cand_sentence_words = words[:start] + term.split() + words[end:]
@@ -775,13 +800,16 @@ class ProposedSystemP:
             # Acoustic teacher-forcing logprob delta
             acoustic_delta = 0.0
             if self.acoustic_scorer is not None and self.ranker.enable_acoustic:
+                t_a0 = _t.perf_counter()
                 acoustic_delta = self.acoustic_scorer.compute_acoustic_delta(
                     asr_transcript,
                     cand_sentence,
                     audio_path
                 )
+                t_acoust_ms += (_t.perf_counter() - t_a0) * 1000.0
 
             # Evidence scoring & decision gate
+            t_gt0 = _t.perf_counter()
             score, prob = self.ranker.score_candidate(
                 lexical_sim=top_cand["lexical_sim"],
                 phonetic_sim=top_cand["phonetic_sim"],
@@ -796,6 +824,7 @@ class ProposedSystemP:
                 score = 10.0
 
             should_acc = self.ranker.should_accept(prob)
+            t_gate_ms += (_t.perf_counter() - t_gt0) * 1000.0
 
             span_obj = CandidateSpan(
                 start_token=start,
@@ -865,11 +894,21 @@ class ProposedSystemP:
             curr_idx += 1
 
         revised_transcript = " ".join(revised_tokens)
+        t_post_ms = (_t.perf_counter() - t_start) * 1000.0
 
-        return {
+        res = {
             "original_transcript": asr_transcript,
             "revised_transcript": revised_transcript,
             "predicted_terms": predicted_terms,
             "accepted_changes": accepted_changes,
             "all_evaluated_spans": evaluated_spans
         }
+        if return_timing:
+            res["timing"] = {
+                "t_gen_ms": round(t_gen_ms, 2),
+                "t_ctx_ms": round(t_ctx_ms, 2),
+                "t_acoust_ms": round(t_acoust_ms, 2),
+                "t_gate_ms": round(t_gate_ms, 2),
+                "t_post_ms": round(t_post_ms, 2)
+            }
+        return res
