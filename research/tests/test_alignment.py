@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
+import pytest
 
-import torch
+torch = pytest.importorskip("torch")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from liemwhisper.alignment import retrieval_topk, symmetric_info_nce
