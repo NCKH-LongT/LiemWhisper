@@ -20,11 +20,35 @@ import os
 import sys
 import time
 import json
+import site
+import ctypes
 import platform
 import argparse
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
+
+# Windows CUDA DLL linker setup
+for sp in site.getsitepackages():
+    for sub in ['cublas', 'cudnn', 'cuda_nvrtc']:
+        p = os.path.join(sp, 'nvidia', sub, 'bin')
+        if os.path.exists(p):
+            if hasattr(os, 'add_dll_directory'):
+                try:
+                    os.add_dll_directory(p)
+                except Exception:
+                    pass
+            os.environ['PATH'] = p + os.pathsep + os.environ.get('PATH', '')
+
+    cublas_bin = os.path.join(sp, 'nvidia', 'cublas', 'bin')
+    if os.path.exists(cublas_bin):
+        for dll_name in ['cublasLt64_12.dll', 'cublas64_12.dll']:
+            dll_path = os.path.join(cublas_bin, dll_name)
+            if os.path.exists(dll_path):
+                try:
+                    ctypes.CDLL(dll_path)
+                except Exception:
+                    pass
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
