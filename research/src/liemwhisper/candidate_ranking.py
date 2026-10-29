@@ -87,23 +87,38 @@ def remove_vn_accents(text: str) -> str:
 def phonetic_skeleton(word: str) -> str:
     """
     Rút trích khung xương âm vị (Phonetic Skeleton) tương thích giữa phát âm tiếng Việt và tiếng Anh.
-    Chuẩn hóa các nhóm phụ âm tương đồng khi người Việt nói chêm tiếng Anh:
-    - ph, f -> f
-    - th -> t
-    - tr, ch -> c
-    - ng, ngh -> n
-    - kh -> k
-    - gh, g -> g
-    - qu -> kw
-    - x, z, j, d, s -> s (nhóm âm xát)
-    - c, k, q -> k (nhóm âm vòm)
-    - b, p -> b (nhóm âm môi)
-    - d, t -> t (nhóm âm răng)
+    Chuẩn hóa các nhóm nguyên âm/nhị trùng âm mượn và các nhóm phụ âm tương đồng khi người Việt nói chêm tiếng Anh:
+    - Vowels/Diphthongs:
+      * ay, ai, ey, ei, ây -> E
+      * ee, ea, ie, ia, i, y -> I
+      * oo, ou, u, ư -> U
+      * aw, ow, au, oa, o, ô, ơ -> O
+      * a, ă, â -> A
+    - Consonants:
+      * ph, f -> f
+      * th -> t
+      * tr, ch -> c
+      * ngh, ng -> n
+      * kh -> k
+      * gh, g -> g
+      * qu -> kw
+      * x, z, j, d, s -> s (nhóm âm xát)
+      * c, k, q -> k (nhóm âm vòm)
+      * b, p -> b (nhóm âm môi)
+      * d, t -> t (nhóm âm răng)
     """
-    w = remove_vn_accents(word).strip()
+    w = remove_vn_accents(word).strip().lower()
     if not w:
         return ""
 
+    # Loanword vowel & diphthong harmonizations
+    w = re.sub(r'ay|ai|ey|ei|ây', 'E', w)
+    w = re.sub(r'ee|ea|ie|ia|i|y', 'I', w)
+    w = re.sub(r'oo|ou|u|ư', 'U', w)
+    w = re.sub(r'aw|ow|au|oa|o|ô|ơ', 'O', w)
+    w = re.sub(r'a|ă|â', 'A', w)
+
+    # Consonant groups
     w = re.sub(r'ph', 'f', w)
     w = re.sub(r'th', 't', w)
     w = re.sub(r'tr|ch', 'c', w)
@@ -119,7 +134,7 @@ def phonetic_skeleton(word: str) -> str:
     skel = []
     prev = ""
     for ch in w:
-        if ch in "abcdefghijklmnopqrstuvwxyz":
+        if ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ":
             if ch != prev:
                 skel.append(ch)
                 prev = ch
@@ -145,7 +160,11 @@ def sequence_similarity(seq1: str, seq2: str) -> float:
     return max(0.0, 1.0 - (dp[n][m] / max(n, m)))
 
 def token_alignment_similarity(span_words: List[str], term_words: List[str]) -> float:
-    """Monge-Elkan style maximum token-level alignment similarity."""
+    """
+    Monge-Elkan style maximum token-level alignment similarity.
+    Enforces a strict minimum-word match guard to prevent partial corruptions
+    (e.g., preventing 'test lại' or 'tester gần' from matching 'Test Plan').
+    """
     span_skels = [phonetic_skeleton(w) for w in span_words if phonetic_skeleton(w)]
     term_skels = [phonetic_skeleton(w) for w in term_words if phonetic_skeleton(w)]
     if not term_skels or not span_skels:
@@ -156,9 +175,9 @@ def token_alignment_similarity(span_words: List[str], term_words: List[str]) -> 
         best_s = max(sequence_similarity(tw, sw) for sw in span_skels)
         scores.append(best_s)
 
-    # For multi-word terms, if any word in the term is completely absent in the span, penalize
+    # For multi-word terms, if any word in the term is weakly matched in the span, penalize heavily
     min_match = min(scores)
-    if len(scores) > 1 and min_match < 0.40:
+    if len(scores) > 1 and min_match < 0.58:
         return 0.0
 
     return sum(scores) / len(scores)
@@ -262,47 +281,88 @@ VN_STOPWORDS = {
 class ContextualCompatibilityScorer:
     """
     Computes lexical-semantic compatibility between the sentence context
-    (transcript excluding the target span) and ISTQB term definitions.
+    (transcript excluding the target span) and ISTQB term definitions
+    using TF-IDF Vector Space Cosine Similarity.
+    Downweights frequent generic testing terms while emphasizing discriminative domain anchors.
     """
 
     def __init__(self, taxonomy: TaxonomyManager):
         self.taxonomy = taxonomy
         self.term_definitions: Dict[str, Set[str]] = {}
+        self.term_tf: Dict[str, Dict[str, float]] = {}
+        self.term_idf: Dict[str, float] = {}
         self._build_definition_lexicon()
 
     def _build_definition_lexicon(self):
-        for term in self.taxonomy.canonical_terms:
+        from collections import Counter
+        doc_freq = Counter()
+        doc_tokens_dict = {}
+        all_terms = self.taxonomy.canonical_terms
+        N = len(all_terms)
+
+        for term in all_terms:
             cat = self.taxonomy.get_category(term)
             cat_desc = self.taxonomy.categories.get(cat, "")
             defn = ISTQB_DEFINITIONS.get(term, "")
             combined = f"{term} {cat} {cat_desc} {defn}"
-            tokens = set(TextNormalizer.word_tokenize(TextNormalizer.normalize(combined)))
-            filtered = {w for w in tokens if len(w) > 2 and w not in VN_STOPWORDS}
-            self.term_definitions[term] = filtered
+            tokens = [
+                w for w in TextNormalizer.word_tokenize(TextNormalizer.normalize(combined))
+                if len(w) > 2 and w not in VN_STOPWORDS
+            ]
+            self.term_definitions[term] = set(tokens)
+            token_counts = Counter(tokens)
+            doc_tokens_dict[term] = token_counts
+            for w in token_counts.keys():
+                doc_freq[w] += 1
+
+        # Smooth IDF: words appearing across majority (>60%) of glossary terms carry 0 weight
+        for w, df in doc_freq.items():
+            if df > N * 0.6:
+                self.term_idf[w] = 0.0
+            else:
+                self.term_idf[w] = math.log((N - df + 0.5) / (df + 0.5) + 1.0)
+
+        # Build normalized TF-IDF definition vectors
+        for term, counts in doc_tokens_dict.items():
+            vec = {}
+            for w, c in counts.items():
+                idf = self.term_idf.get(w, 0.0)
+                if idf > 0.0:
+                    vec[w] = (1.0 + math.log(c)) * idf
+            norm = math.sqrt(sum(v**2 for v in vec.values())) or 1.0
+            self.term_tf[term] = {w: v / norm for w, v in vec.items()}
 
     def compute_context_compatibility(self, context_text: str, candidate_term: str) -> float:
         """
-        Calculates Jaccard / token-overlap compatibility between context and term profile.
+        Calculates TF-IDF cosine compatibility between context and term profile.
         """
         if not context_text or not candidate_term:
             return 0.0
 
-        target_tokens = self.term_definitions.get(candidate_term)
-        if not target_tokens:
+        target_vec = self.term_tf.get(candidate_term)
+        if not target_vec:
             return 0.0
 
-        ctx_tokens = set(TextNormalizer.word_tokenize(TextNormalizer.normalize(context_text)))
-        ctx_filtered = {w for w in ctx_tokens if len(w) > 2 and w not in VN_STOPWORDS}
-        if not ctx_filtered:
+        ctx_tokens = [
+            w for w in TextNormalizer.word_tokenize(TextNormalizer.normalize(context_text))
+            if len(w) > 2 and w not in VN_STOPWORDS
+        ]
+        if not ctx_tokens:
             return 0.0
 
-        inter = len(ctx_filtered & target_tokens)
-        if inter == 0:
-            return 0.0
+        from collections import Counter
+        ctx_counts = Counter(ctx_tokens)
+        ctx_vec = {}
+        for w, c in ctx_counts.items():
+            idf = self.term_idf.get(w, 0.0)
+            if idf > 0.0:
+                ctx_vec[w] = (1.0 + math.log(c)) * idf
 
-        # Weighted overlap score normalized by log context length
-        overlap_score = inter / (math.sqrt(len(ctx_filtered)) * math.sqrt(len(target_tokens)))
-        return min(1.0, overlap_score * 2.0)
+        norm = math.sqrt(sum(v**2 for v in ctx_vec.values())) or 1.0
+        ctx_norm_vec = {w: v / norm for w, v in ctx_vec.items()}
+
+        cosine = sum(ctx_norm_vec[w] * target_vec[w] for w in ctx_norm_vec if w in target_vec)
+        return min(1.0, cosine * 2.5)
 
 
 # ==============================================================================
@@ -586,6 +646,7 @@ class EvidenceRanker:
         self,
         weights: Optional[Dict[str, float]] = None,
         threshold: float = 0.50,
+        threshold_single: float = 0.62,
         enable_acoustic: bool = True,
         enable_context: bool = True,
         enable_phonetic: bool = True,
@@ -596,11 +657,12 @@ class EvidenceRanker:
             "w_lex": 1.8,
             "w_phon": 2.2,
             "w_acoust": 1.5,
-            "w_ctx": 1.2,
+            "w_ctx": 1.4,
             "w_margin": 1.0,
             "bias": -2.8
         }
         self.threshold = threshold
+        self.threshold_single = threshold_single
         self.enable_acoustic = enable_acoustic
         self.enable_context = enable_context
         self.enable_phonetic = enable_phonetic
@@ -612,7 +674,8 @@ class EvidenceRanker:
         phonetic_sim: float,
         acoustic_delta: float,
         context_sim: float,
-        margin: float
+        margin: float,
+        candidate_term: Optional[str] = None
     ) -> Tuple[float, float]:
         """
         Returns: (linear_score, probability)
@@ -635,16 +698,20 @@ class EvidenceRanker:
             self.weights["bias"]
         )
 
-        # Acoustic veto: if acoustic decoder strongly rejects replacement given the audio, penalize
-        if self.enable_acoustic and acoustic_delta < -0.25:
-            score -= 2.5 * abs(acoustic_delta)
+        # Length-adaptive acoustic veto: prevents short words from over-penalization while strictly vetoing long phrasal hallucination
+        L = max(1, len(candidate_term.split())) if candidate_term else 1
+        tau_acoust = -0.18 - (0.15 / math.sqrt(L))
+        if self.enable_acoustic and acoustic_delta < tau_acoust:
+            score -= 2.5 * abs(acoustic_delta - tau_acoust)
 
         prob = 1.0 / (1.0 + math.exp(-max(-15.0, min(15.0, score))))
         return score, prob
 
-    def should_accept(self, prob: float) -> bool:
+    def should_accept(self, prob: float, candidate_term: Optional[str] = None) -> bool:
         if not self.enable_gate:
             return True
+        if candidate_term and len(candidate_term.split()) == 1:
+            return prob >= self.threshold_single
         return prob >= self.threshold
 
     def fit_on_data(self, feature_records: List[Dict[str, Any]], target_labels: List[int]):
@@ -686,8 +753,46 @@ class EvidenceRanker:
 
 
 # ==============================================================================
-# 6. PROPOSED SYSTEM P: END-TO-END PIPELINE
+# 6. DYNAMIC PROGRAMMING INTERVAL SCHEDULER & PROPOSED SYSTEM P
 # ==============================================================================
+
+def solve_mwis_spans(spans: List[CandidateSpan], n_words: int) -> List[CandidateSpan]:
+    """
+    Solves Maximum Weight Independent Set (MWIS) via 1D Dynamic Programming
+    to find globally optimal non-overlapping candidate spans.
+    Length boost rewards compound terms that carry higher semantic payload.
+    """
+    if not spans:
+        return []
+
+    spans_by_end: Dict[int, List[CandidateSpan]] = {i: [] for i in range(n_words + 1)}
+    for s in spans:
+        if s.end_token <= n_words:
+            spans_by_end[s.end_token].append(s)
+
+    dp: List[Tuple[float, List[CandidateSpan]]] = [(0.0, []) for _ in range(n_words + 1)]
+
+    for i in range(1, n_words + 1):
+        # Default option: transition without ending a span at token i
+        best_score, best_spans = dp[i - 1][0], list(dp[i - 1][1])
+
+        # Evaluate candidate spans ending at token i
+        for s in spans_by_end[i]:
+            span_len = s.end_token - s.start_token
+            length_boost = 1.0 + 0.15 * (span_len - 1)
+            span_weight = s.decision_score * length_boost
+
+            prev_score, prev_spans = dp[s.start_token]
+            if prev_score + span_weight > best_score:
+                best_score = prev_score + span_weight
+                best_spans = prev_spans + [s]
+
+        dp[i] = (best_score, best_spans)
+
+    chosen = dp[n_words][1]
+    chosen.sort(key=lambda s: s.start_token)
+    return chosen
+
 
 class ProposedSystemP:
     """
@@ -701,6 +806,7 @@ class ProposedSystemP:
         acoustic_scorer: Optional[AcousticTeacherForcingScorer] = None,
         generator_threshold: float = 0.45,
         acceptance_threshold: float = 0.50,
+        threshold_single: float = 0.62,
         enable_acoustic: bool = True,
         enable_context: bool = True,
         enable_phonetic: bool = True,
@@ -712,6 +818,7 @@ class ProposedSystemP:
         self.generator = CandidateGenerator(taxonomy, min_retrieval_threshold=generator_threshold)
         self.ranker = EvidenceRanker(
             threshold=acceptance_threshold,
+            threshold_single=threshold_single,
             enable_acoustic=enable_acoustic,
             enable_context=enable_context,
             enable_phonetic=enable_phonetic,
@@ -815,7 +922,8 @@ class ProposedSystemP:
                 phonetic_sim=top_cand["phonetic_sim"],
                 acoustic_delta=acoustic_delta,
                 context_sim=ctx_sim,
-                margin=margin
+                margin=margin,
+                candidate_term=term
             )
 
             # If exact match already in baseline, prob is automatically 1.0
@@ -823,7 +931,7 @@ class ProposedSystemP:
                 prob = 1.0
                 score = 10.0
 
-            should_acc = self.ranker.should_accept(prob)
+            should_acc = self.ranker.should_accept(prob, candidate_term=term)
             t_gate_ms += (_t.perf_counter() - t_gt0) * 1000.0
 
             span_obj = CandidateSpan(
@@ -843,21 +951,9 @@ class ProposedSystemP:
             )
             evaluated_spans.append(span_obj)
 
-        # Non-overlapping greedy selection: sort accepted spans by decision score desc, then span len desc
+        # Globally optimal non-overlapping span selection via 1D Dynamic Programming (MWIS)
         accepted_spans = [s for s in evaluated_spans if s.accepted]
-        accepted_spans.sort(key=lambda s: (s.decision_score, s.end_token - s.start_token), reverse=True)
-
-        selected_spans: List[CandidateSpan] = []
-        occupied_indices: Set[int] = set()
-
-        for s in accepted_spans:
-            s_set = set(range(s.start_token, s.end_token))
-            if not (s_set & occupied_indices):
-                occupied_indices.update(s_set)
-                selected_spans.append(s)
-
-        # Sort chronologically by start token
-        selected_spans.sort(key=lambda s: s.start_token)
+        selected_spans = solve_mwis_spans(accepted_spans, n_words)
 
         # Reconstruct revised transcript
         revised_tokens = []
