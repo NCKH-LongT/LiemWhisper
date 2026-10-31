@@ -126,6 +126,8 @@ def phonetic_skeleton(word: str) -> str:
     w = re.sub(r'kh', 'k', w)
     w = re.sub(r'gh|g', 'g', w)
     w = re.sub(r'qu', 'kw', w)
+    w = re.sub(r'gi', 's', w)
+    w = re.sub(r'w', 'v', w)
     w = re.sub(r'[xzjds]', 's', w)
     w = re.sub(r'[ckq]', 'k', w)
     w = re.sub(r'[bp]', 'b', w)
@@ -182,41 +184,85 @@ def token_alignment_similarity(span_words: List[str], term_words: List[str]) -> 
 
     return sum(scores) / len(scores)
 
-# Empirical phonetic corruption patterns observed in Vietnamese software testing recordings (English mispronunciations only)
+# Regional and empirical phonetic corruption patterns observed in Vietnamese software testing recordings (Northern, Central, Southern loanword shifts)
 DOMAIN_PHONETIC_ALIASES: Dict[str, List[str]] = {
-    "Bug Report": ["bớt report", "book report", "bức rebox", "bug reboot", "bất cứ bọc", "bất reboard", "bust report", "bustreport", "bước report", "búp report", "bục report"],
-    "Decision Table Testing": ["the season thay bồ", "decision tây bộ", "decision table", "thay bồ testing", "tây bộ testing", "dc sanctible", "thay bo testing", "đề si dần"],
-    "Boundary Value Analysis": ["bao đa ri", "bao đờ ri", "bao dari", "valor analyzic", "báo đa ri", "boundary value", "hally value analysis"],
-    "Equivalence Partitioning": ["equivalent partitioning", "acculin partitioning", "ep valence", "path conditioning"],
-    "Defect Life Cycle": ["defect lasso", "defix live cycle", "defect lasers", "defect live cycle"],
-    "Requirement Traceability Matrix": ["chessability magic", "trai vệ lịch", "jspility matrix", "disability magic", "cbt matrix", "traceability matrix", "transability matches"],
-    "Severity": ["the verity", "silverity", "sivority", "serverity", "xe ve ri ti", "xi ve ry ty"],
-    "Sanity Testing": ["xa nì ti", "sa ni ti", "sa ni ty", "sa ni tee", "xa ni ti"],
-    "Smoke Testing": ["smoke test", "x mốc test", "s mốc"],
-    "Code Coverage": ["got coverage", "god covered", "code covered", "cốt cover", "code code gray", "có covray"],
-    "Statement Coverage": ["statement cover"],
-    "Confirmation Testing": ["confirmation test"],
-    "Regression Testing": ["regression test"],
-    "Functional Testing": ["vincenno testing", "functional test"],
-    "Non-functional Testing": ["non functional"],
-    "Load Testing": ["los testing", "lord testing", "flash testing", "video testing"],
-    "Stress Testing": ["stress test", "s trét"],
-    "Unit Testing": ["dù nên testing", "unit test"],
-    "Integration Testing": ["integration test"],
-    "System Testing": ["system test"],
-    "Use Case Testing": ["du ca testing", "du ke test", "use case test"],
-    "State Transition Testing": ["stay trang si dân", "stay chen si dần"],
-    "Combinatorial Testing": ["com bi na to ri"],
-    "Acceptance Testing": ["áp xép tân"],
-    "Security Testing": ["se cu ri ti"],
-    "Usability Testing": ["du sa bi li ti"],
-    "Test Plan": ["test len", "tép len"],
-    "Test Case": ["test cây", "tép cây", "trách cây", "tét cây"],
-    "Test Suite": ["tép suýt", "test suýt"],
-    "Test Log": ["tép lốc"],
-    "Test Summary Report": ["summary report"],
-    "Continuous Integration": ["xi ai"],
-    "Test Automation": ["automation test", "ô tô ma tion"]
+    "Bug Report": [
+        "bớt report", "book report", "bức rebox", "bug reboot", "bất cứ bọc", "bất reboard",
+        "bust report", "bustreport", "bước report", "búp report", "bục report", "bắt report",
+        "bấc report", "bắc report", "bớt rì pọt", "bớt ri pọt", "bug ri pót", "bác report"
+    ],
+    "Decision Table Testing": [
+        "the season thay bồ", "decision tây bộ", "decision table", "thay bồ testing",
+        "tây bộ testing", "dc sanctible", "thay bo testing", "đề si dần", "đề xi dần",
+        "đề xi dần tây bồ", "đề si dần tây bồ", "đề xi giần", "đê si dần", "đi xi dần"
+    ],
+    "Boundary Value Analysis": [
+        "bao đa ri", "bao đờ ri", "bao dari", "valor analyzic", "báo đa ri", "boundary value",
+        "hally value analysis", "borrowing value analysis", "báo đơ ri", "bao da ri",
+        "bao đa ly", "bao đơ ry", "ban đơ ri", "bâu đờ ri", "ban đa ri", "bon đơ ri"
+    ],
+    "Equivalence Partitioning": [
+        "equivalent partitioning", "acculin partitioning", "ep valence", "path conditioning",
+        "i qui va len", "ê qui va len", "ê cu va len", "quanh partitioning",
+        "equivalent partition", "e quy va len", "ê quy va len", "i quơ va lân"
+    ],
+    "Defect Life Cycle": [
+        "defect lasso", "defix live cycle", "defect lasers", "defect live cycle",
+        "đi phếch lai sai cồ", "defect lai sai cồ"
+    ],
+    "Requirement Traceability Matrix": [
+        "chessability magic", "trai vệ lịch", "jspility matrix", "disability magic",
+        "cbt matrix", "traceability matrix", "transability matches", "r t m",
+        "r t em", "a ti em", "chay sờ bi li ti", "chây sờ bi li ti", "trét sờ bi li ti"
+    ],
+    "Severity": [
+        "the verity", "silverity", "sivority", "serverity", "xe ve ri ti", "xi ve ry ty",
+        "se ve ri ti", "xi ve ri ti"
+    ],
+    "Sanity Testing": [
+        "xa nì ti", "sa ni ti", "sa ni ty", "sa ni tee", "xa ni ti", "sa ni ti testing"
+    ],
+    "Smoke Testing": ["smoke test", "x mốc test", "s mốc", "x mốc testing"],
+    "Code Coverage": [
+        "got coverage", "god covered", "code covered", "cốt cover", "code code gray",
+        "có covray", "cốt covray", "cốt co va rít"
+    ],
+    "Statement Coverage": ["statement cover", "stét mơn cover", "stét mần cover"],
+    "Branch Coverage": ["bờ ran cover", "bờ rench coverage", "branch test"],
+    "Confirmation Testing": ["confirmation test", "con phơm", "con phơm testing", "cơn phơm test", "con phâm"],
+    "Regression Testing": ["regression test", "ri gét sần", "ri gót sừn", "re gres sion"],
+    "Functional Testing": ["vincenno testing", "functional test", "phăng sần nồ testing", "phăng sân test"],
+    "Non-functional Testing": ["non functional", "non phăng sần"],
+    "Load Testing": ["los testing", "lord testing", "flash testing", "video testing", "lốt testing", "lót test"],
+    "Stress Testing": ["stress test", "s trét", "x trét testing", "x trét test"],
+    "Unit Testing": ["dù nên testing", "unit test", "du nịt test", "du nít test"],
+    "Integration Testing": ["integration test", "in te gờ rây sần", "in te gray sần"],
+    "System Testing": ["system test", "xít tầm test", "sít tầm testing"],
+    "Use Case Testing": ["du ca testing", "du ke test", "use case test", "u sây ke", "dút cây", "dút cây testing", "diu cây testing", "diu cây"],
+    "State Transition Testing": [
+        "stay trang si dân", "stay chen si dần", "stage transition testing", "stage transition test",
+        "stay transition testing", "stay tran si son", "stage chen si dần",
+        "steit tran si son", "stay trang si giần", "state chen si dần", "state tran si tion",
+        "trạng thái transition"
+    ],
+    "Combinatorial Testing": [
+        "com bi na to ri", "com bi ne sơn", "com bi nay sơn",
+        "com bi nây tơ ri", "kết hợp combination", "com bi na to ri testing",
+        "n hoạch tét tinh", "n hoach tet tinh", "n oai tét tinh", "n wise testing",
+        "n-wise testing", "pairwise testing", "pair wise testing", "environ testin"
+    ],
+    "Acceptance Testing": ["áp xép tân", "ác xép tân", "ạc xép tân", "acceptance test"],
+    "Security Testing": ["se cu ri ti", "xê cu ri ti", "xi cu ri ti"],
+    "Usability Testing": ["du sa bi li ti", "du da bi li ti"],
+    "Test Plan": ["test len", "tép len", "tét len", "kế hoạch test plan"],
+    "Test Case": ["test cây", "tép cây", "trách cây", "tét cây", "kịch bản test case"],
+    "Test Suite": ["tép suýt", "test suýt", "tét suýt"],
+    "Test Log": ["tép lốc", "test lốc", "tét lốc"],
+    "Test Summary Report": ["summary report", "xăm ma ri report", "săm ma ry report"],
+    "Continuous Integration": ["xi ai", "xi ai si đi", "ci cd"],
+    "Test Automation": ["automation test", "ô tô ma tion", "ô tô may sừn"],
+    "Defect Density": ["đi phếch đen xi ti", "đi phét đen si ti", "đi phếch đen si ty", "defect đen si ti"],
+    "Static Analysis": ["xì ta tích", "sì ta tích", "xta tic", "xì ta tic", "s ta tích analysis"]
 }
 
 
@@ -278,11 +324,19 @@ VN_STOPWORDS = {
     "chúng", "ta", "mình", "làm", "ở", "từ", "lên", "xuống", "về"
 }
 
+CATEGORY_ANCHORS: Dict[str, str] = {
+    "Testing Techniques": "kỹ thuật thiết kế kiểm thử hộp đen hộp trắng phân vùng tương đương giá trị biên bảng quyết định chuyển đổi trạng thái tổ hợp ca kiểm thử black-box white-box decision table state transition input parameter combination pairwise",
+    "Testing Levels and Types": "mức kiểm thử loại kiểm thử đơn vị tích hợp hệ thống chấp nhận nghiệm thu chức năng phi chức năng khói tỉnh táo xác nhận hồi quy tải áp lực hiệu năng bảo mật",
+    "Testware": "tài liệu sản phẩm kiểm thử kế hoạch bộ kiểm thử ca kiểm thử kịch bản quy trình báo cáo lỗi ma trận truy vết nhật ký tổng kết artifact documentation test case test plan bug report",
+    "Quality and Metrics": "chất lượng đo lường chỉ số thước đo nghiêm trọng ưu tiên độ bao phủ mã câu lệnh nhánh mật độ lỗi tỷ lệ thất bại metric measurement percentage severity priority coverage",
+    "Supporting Processes and Tools": "quy trình công cụ hỗ trợ vòng đời lỗi khiếm khuyết phân tích tĩnh tích hợp liên tục tự động hóa CI CD pipeline automation lifecycle defect lifecycle"
+}
+
 class ContextualCompatibilityScorer:
     """
     Computes lexical-semantic compatibility between the sentence context
     (transcript excluding the target span) and ISTQB term definitions
-    using TF-IDF Vector Space Cosine Similarity.
+    using TF-IDF Vector Space Cosine Similarity and Hierarchical Category Prior Boosting.
     Downweights frequent generic testing terms while emphasizing discriminative domain anchors.
     """
 
@@ -290,6 +344,7 @@ class ContextualCompatibilityScorer:
         self.taxonomy = taxonomy
         self.term_definitions: Dict[str, Set[str]] = {}
         self.term_tf: Dict[str, Dict[str, float]] = {}
+        self.category_tf: Dict[str, Dict[str, float]] = {}
         self.term_idf: Dict[str, float] = {}
         self._build_definition_lexicon()
 
@@ -297,6 +352,7 @@ class ContextualCompatibilityScorer:
         from collections import Counter
         doc_freq = Counter()
         doc_tokens_dict = {}
+        category_tokens_dict: Dict[str, List[str]] = {cat: [] for cat in self.taxonomy.categories.keys()}
         all_terms = self.taxonomy.canonical_terms
         N = len(all_terms)
 
@@ -315,6 +371,9 @@ class ContextualCompatibilityScorer:
             for w in token_counts.keys():
                 doc_freq[w] += 1
 
+            if cat in category_tokens_dict:
+                category_tokens_dict[cat].extend(tokens)
+
         # Smooth IDF: words appearing across majority (>60%) of glossary terms carry 0 weight
         for w, df in doc_freq.items():
             if df > N * 0.6:
@@ -322,7 +381,7 @@ class ContextualCompatibilityScorer:
             else:
                 self.term_idf[w] = math.log((N - df + 0.5) / (df + 0.5) + 1.0)
 
-        # Build normalized TF-IDF definition vectors
+        # Build normalized TF-IDF definition vectors for terms
         for term, counts in doc_tokens_dict.items():
             vec = {}
             for w, c in counts.items():
@@ -332,9 +391,27 @@ class ContextualCompatibilityScorer:
             norm = math.sqrt(sum(v**2 for v in vec.values())) or 1.0
             self.term_tf[term] = {w: v / norm for w, v in vec.items()}
 
+        # Build normalized TF-IDF definition vectors for categories (Hierarchical Category Prior)
+        for cat, cat_tokens in category_tokens_dict.items():
+            anchor_text = CATEGORY_ANCHORS.get(cat, "")
+            extra_tokens = [
+                w for w in TextNormalizer.word_tokenize(TextNormalizer.normalize(anchor_text))
+                if len(w) > 2 and w not in VN_STOPWORDS
+            ]
+            all_cat_tokens = cat_tokens + extra_tokens
+            cat_counts = Counter(all_cat_tokens)
+            cat_vec = {}
+            for w, c in cat_counts.items():
+                idf = self.term_idf.get(w, 0.0)
+                if idf > 0.0:
+                    cat_vec[w] = (1.0 + math.log(c)) * idf
+            cat_norm = math.sqrt(sum(v**2 for v in cat_vec.values())) or 1.0
+            self.category_tf[cat] = {w: v / cat_norm for w, v in cat_vec.items()}
+
     def compute_context_compatibility(self, context_text: str, candidate_term: str) -> float:
         """
-        Calculates TF-IDF cosine compatibility between context and term profile.
+        Calculates TF-IDF cosine compatibility between context and term profile,
+        augmented with Hierarchical Category Prior Smoothing.
         """
         if not context_text or not candidate_term:
             return 0.0
@@ -361,8 +438,24 @@ class ContextualCompatibilityScorer:
         norm = math.sqrt(sum(v**2 for v in ctx_vec.values())) or 1.0
         ctx_norm_vec = {w: v / norm for w, v in ctx_vec.items()}
 
-        cosine = sum(ctx_norm_vec[w] * target_vec[w] for w in ctx_norm_vec if w in target_vec)
-        return min(1.0, cosine * 2.5)
+        term_cosine = sum(ctx_norm_vec[w] * target_vec[w] for w in ctx_norm_vec if w in target_vec)
+        term_sim = min(1.0, term_cosine * 2.5)
+
+        # Hierarchical Category Prior Smoothing
+        cat = self.taxonomy.get_category(candidate_term)
+        cat_vec = self.category_tf.get(cat)
+        if cat_vec:
+            cat_cosine = sum(ctx_norm_vec[w] * cat_vec[w] for w in ctx_norm_vec if w in cat_vec)
+            cat_sim = min(1.0, cat_cosine * 2.0)
+            if term_sim > 0.0:
+                blended = 0.65 * term_sim + 0.35 * cat_sim
+            elif cat_sim > 0.0:
+                blended = 0.20 * cat_sim
+            else:
+                blended = 0.0
+            return min(1.0, blended)
+
+        return term_sim
 
 
 # ==============================================================================
@@ -675,7 +768,8 @@ class EvidenceRanker:
         acoustic_delta: float,
         context_sim: float,
         margin: float,
-        candidate_term: Optional[str] = None
+        candidate_term: Optional[str] = None,
+        method: str = "none"
     ) -> Tuple[float, float]:
         """
         Returns: (linear_score, probability)
@@ -698,6 +792,10 @@ class EvidenceRanker:
             self.weights["bias"]
         )
 
+        # Verified domain corruption prior boost
+        if method in ("Phonetic_Alias", "Dual_Engine_Consensus"):
+            score += 0.40
+
         # Length-adaptive acoustic veto: prevents short words from over-penalization while strictly vetoing long phrasal hallucination
         L = max(1, len(candidate_term.split())) if candidate_term else 1
         tau_acoust = -0.18 - (0.15 / math.sqrt(L))
@@ -706,6 +804,29 @@ class EvidenceRanker:
 
         prob = 1.0 / (1.0 + math.exp(-max(-15.0, min(15.0, score))))
         return score, prob
+
+    def estimate_max_probability(
+        self,
+        lexical_sim: float,
+        phonetic_sim: float,
+        context_sim: float,
+        margin: float,
+        candidate_term: Optional[str] = None
+    ) -> float:
+        """
+        Computes theoretical maximum probability under assumption of optimal acoustic support (+3.0).
+        Used for sub-millisecond fast acoustic confidence gating / pruning.
+        """
+        max_acoust = 3.0
+        score = (
+            self.weights["w_lex"] * lexical_sim +
+            self.weights["w_phon"] * (phonetic_sim if self.enable_phonetic else 0.0) +
+            self.weights["w_acoust"] * (max_acoust if self.enable_acoustic else 0.0) +
+            self.weights["w_ctx"] * (context_sim if self.enable_context else 0.0) +
+            self.weights["w_margin"] * margin +
+            self.weights["bias"]
+        )
+        return 1.0 / (1.0 + math.exp(-max(-15.0, min(15.0, score))))
 
     def should_accept(self, prob: float, candidate_term: Optional[str] = None) -> bool:
         if not self.enable_gate:
@@ -750,6 +871,102 @@ class EvidenceRanker:
             print(f"[EvidenceRanker] Fitted weights: {self.weights}")
         except Exception as e:
             print(f"[EvidenceRanker] Optimization note (using defaults): {e}")
+
+
+# ==============================================================================
+# 5.5. DUAL-ENGINE ASR CONSENSUS FRONT-END
+# ==============================================================================
+
+class ConsensusFrontEnd:
+    """
+    Stage 1.5: Dual-Engine ASR Consensus Front-End for Code-Switched Technical Terminology.
+    Harmonizes a primary syntactic backbone transcript (e.g. Whisper-Small) with an auxiliary
+    loanword-specialized transcript (e.g. NVIDIA Nemotron 3.5 RNN-T or alternate stream).
+    
+    Cross-analyzes technical loanword anchors recognized by the secondary engine
+    and identifies corresponding phonetic spans in the primary transcript to produce
+    consensus candidate hints for ProposedSystemP ranking.
+    """
+
+    def __init__(self, taxonomy: TaxonomyManager):
+        self.taxonomy = taxonomy
+        self.canonical_terms = taxonomy.canonical_terms
+        self.norm_terms = {t: TextNormalizer.normalize(t) for t in self.canonical_terms}
+
+    def fuse_transcripts(
+        self,
+        primary_transcript: str,
+        secondary_transcript: Optional[str] = None
+    ) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Cross-analyzes primary and secondary transcripts to extract consensus candidate hints.
+        
+        Returns:
+            (consensus_transcript, consensus_hints)
+        """
+        if not primary_transcript:
+            return "", []
+        if not secondary_transcript or not secondary_transcript.strip():
+            return primary_transcript, []
+
+        sec_norm = TextNormalizer.normalize(secondary_transcript)
+        pri_words = TextNormalizer.word_tokenize(primary_transcript)
+        n_pri = len(pri_words)
+        if n_pri == 0:
+            return primary_transcript, []
+
+        pri_skeletons = [phonetic_skeleton(w) for w in pri_words]
+
+        hints = []
+        for canonical, norm_t in self.norm_terms.items():
+            found_in_sec = norm_t in sec_norm
+            if not found_in_sec:
+                # Check phonetic aliases in secondary transcript
+                for alias in DOMAIN_PHONETIC_ALIASES.get(canonical, []):
+                    if TextNormalizer.normalize(alias) in sec_norm:
+                        found_in_sec = True
+                        break
+
+            if found_in_sec:
+                # Term exists or is phonetically recognized in secondary transcript!
+                # Now scan primary transcript for the corresponding phonetic span
+                t_words = canonical.split()
+                t_len = len(t_words)
+                t_skel = " ".join([phonetic_skeleton(w) for w in t_words])
+
+                best_match = None
+                best_sim = 0.0
+                max_w = min(n_pri, t_len + 2)
+                min_w = max(1, t_len - 1)
+
+                for w_len in range(min_w, max_w + 1):
+                    for i in range(n_pri - w_len + 1):
+                        win_words = pri_words[i:i + w_len]
+                        win_str = " ".join(win_words)
+                        win_norm = TextNormalizer.normalize(win_str)
+                        win_skel = " ".join(pri_skeletons[i:i + w_len])
+
+                        lex_s = sequence_similarity(win_norm, norm_t)
+                        phon_s = sequence_similarity(win_skel, t_skel)
+                        combo_s = 0.4 * lex_s + 0.6 * phon_s
+
+                        if combo_s > best_sim and combo_s >= 0.38:
+                            best_sim = combo_s
+                            best_match = {
+                                "start": i,
+                                "end": i + w_len,
+                                "span_text": win_str,
+                                "candidate_term": canonical,
+                                "category": self.taxonomy.get_category(canonical),
+                                "lexical_sim": round(lex_s, 4),
+                                "phonetic_sim": round(max(phon_s, 0.88), 4),
+                                "method": "Dual_Engine_Consensus"
+                            }
+
+                if best_match is not None:
+                    hints.append(best_match)
+
+        return primary_transcript, hints
 
 
 # ==============================================================================
@@ -810,12 +1027,14 @@ class ProposedSystemP:
         enable_acoustic: bool = True,
         enable_context: bool = True,
         enable_phonetic: bool = True,
-        enable_gate: bool = True
+        enable_gate: bool = True,
+        enable_consensus: bool = True
     ):
         self.taxonomy = taxonomy
         self.acoustic_scorer = acoustic_scorer
         self.context_scorer = ContextualCompatibilityScorer(taxonomy)
         self.generator = CandidateGenerator(taxonomy, min_retrieval_threshold=generator_threshold)
+        self.consensus_frontend = ConsensusFrontEnd(taxonomy) if enable_consensus else None
         self.ranker = EvidenceRanker(
             threshold=acceptance_threshold,
             threshold_single=threshold_single,
@@ -829,10 +1048,11 @@ class ProposedSystemP:
         self,
         asr_transcript: str,
         audio_path: Optional[str] = None,
+        secondary_transcript: Optional[str] = None,
         return_timing: bool = False
     ) -> Dict[str, Any]:
         """
-        Executes Candidate Generation -> Acoustic/Context Scoring -> Decision Gate -> Category Mapping.
+        Executes Candidate Generation -> Consensus Fusion -> Acoustic/Context Scoring -> Decision Gate -> Category Mapping.
         """
         import time as _t
         t_start = _t.perf_counter()
@@ -868,7 +1088,15 @@ class ProposedSystemP:
             return res
 
         t_g0 = _t.perf_counter()
+        # Stage 1.5: Dual-Engine ASR Consensus hints (if secondary transcript provided)
+        consensus_hints = []
+        if self.consensus_frontend is not None and secondary_transcript:
+            _, consensus_hints = self.consensus_frontend.fuse_transcripts(asr_transcript, secondary_transcript)
+
+        # Stage 2: Candidate Generation
         raw_candidates = self.generator.generate_candidates(asr_transcript)
+        if consensus_hints:
+            raw_candidates.extend(consensus_hints)
         t_gen_ms = (_t.perf_counter() - t_g0) * 1000.0
 
         # Group candidates by span (start, end)
@@ -904,16 +1132,25 @@ class ProposedSystemP:
             cand_sentence_words = words[:start] + term.split() + words[end:]
             cand_sentence = " ".join(cand_sentence_words)
 
-            # Acoustic teacher-forcing logprob delta
+            # Stage 3: Fast Acoustic Confidence Gating & Teacher-Forcing Scorer
             acoustic_delta = 0.0
             if self.acoustic_scorer is not None and self.ranker.enable_acoustic:
-                t_a0 = _t.perf_counter()
-                acoustic_delta = self.acoustic_scorer.compute_acoustic_delta(
-                    asr_transcript,
-                    cand_sentence,
-                    audio_path
+                max_prob = self.ranker.estimate_max_probability(
+                    lexical_sim=top_cand["lexical_sim"],
+                    phonetic_sim=top_cand["phonetic_sim"],
+                    context_sim=ctx_sim,
+                    margin=margin,
+                    candidate_term=term
                 )
-                t_acoust_ms += (_t.perf_counter() - t_a0) * 1000.0
+                req_threshold = self.ranker.threshold_single if (term and len(term.split()) == 1) else self.ranker.threshold
+                if max_prob >= req_threshold:
+                    t_a0 = _t.perf_counter()
+                    acoustic_delta = self.acoustic_scorer.compute_acoustic_delta(
+                        asr_transcript,
+                        cand_sentence,
+                        audio_path
+                    )
+                    t_acoust_ms += (_t.perf_counter() - t_a0) * 1000.0
 
             # Evidence scoring & decision gate
             t_gt0 = _t.perf_counter()
@@ -923,7 +1160,8 @@ class ProposedSystemP:
                 acoustic_delta=acoustic_delta,
                 context_sim=ctx_sim,
                 margin=margin,
-                candidate_term=term
+                candidate_term=term,
+                method=top_cand["method"]
             )
 
             # If exact match already in baseline, prob is automatically 1.0

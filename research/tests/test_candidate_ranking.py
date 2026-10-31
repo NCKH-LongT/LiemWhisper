@@ -26,6 +26,7 @@ from liemwhisper.candidate_ranking import (
     ContextualCompatibilityScorer,
     CandidateGenerator,
     EvidenceRanker,
+    ConsensusFrontEnd,
     ProposedSystemP
 )
 
@@ -155,3 +156,71 @@ def test_proposed_system_p_end_to_end():
     assert res_normal["revised_transcript"] == normal_sentence
 
     print("  -> Passed ProposedSystemP End-to-End Pipeline!")
+
+
+def test_regional_phonetic_matrix():
+    print("[6/8] Testing Regional Loanword Phonetic Matrix...")
+    tax = TaxonomyManager(TAXONOMY_PATH)
+    gen = CandidateGenerator(tax, min_retrieval_threshold=0.45)
+
+    # Southern loanword corruption: "bớt rì pọt" -> Bug Report
+    text_south = "Hôm nay em nộp bớt rì pọt cho tech lead."
+    cands_south = gen.generate_candidates(text_south)
+    assert any(c["candidate_term"] == "Bug Report" for c in cands_south)
+
+    # Phonetic alias: "stage transition testing" -> State Transition Testing
+    text_stage = "Thực hiện stage transition testing trên giao diện."
+    cands_stage = gen.generate_candidates(text_stage)
+    assert any(c["candidate_term"] == "State Transition Testing" for c in cands_stage)
+
+    # Phonetic alias: "borrowing value analysis" -> Boundary Value Analysis
+    text_bva = "Áp dụng borrowing value analysis để xác định điểm biên."
+    cands_bva = gen.generate_candidates(text_bva)
+    assert any(c["candidate_term"] == "Boundary Value Analysis" for c in cands_bva)
+
+    print("  -> Passed Regional Loanword Phonetic Matrix!")
+
+
+def test_hierarchical_category_prior_boosting():
+    print("[7/8] Testing Hierarchical Category Prior Boosting...")
+    tax = TaxonomyManager(TAXONOMY_PATH)
+    scorer = ContextualCompatibilityScorer(tax)
+
+    # Context with generic category design cues: "kỹ thuật thiết kế kiểm thử hộp đen input parameter"
+    ctx_technique = "kỹ thuật thiết kế kiểm thử hộp đen phân vùng và kết hợp input parameter"
+
+    # Category member: State Transition Testing (Testing Techniques)
+    sim_tech = scorer.compute_context_compatibility(ctx_technique, "State Transition Testing")
+    # Non-member: Security Testing (Testing Levels and Types)
+    sim_sec = scorer.compute_context_compatibility(ctx_technique, "Security Testing")
+
+    assert sim_tech > 0.15, f"Expected strong category compatibility for State Transition Testing, got {sim_tech}"
+    assert sim_tech > sim_sec, f"Expected higher score for Testing Techniques member ({sim_tech}) vs non-member ({sim_sec})"
+
+    print("  -> Passed Hierarchical Category Prior Boosting!")
+
+
+def test_dual_engine_consensus_front_end():
+    print("[8/8] Testing Dual-Engine ASR Consensus Front-End...")
+    tax = TaxonomyManager(TAXONOMY_PATH)
+    consensus = ConsensusFrontEnd(tax)
+
+    # Primary Whisper transcript has corrupted term "stage transition testing"
+    primary_whisper = "Thực hiện kiểm thử kết hợp input parameter theo stage transition testing để tìm lỗi."
+    # Secondary Nemotron transcript recognized "state transition testing"
+    secondary_nemotron = "Được nghiện kiếm tử kết hợp input parameter theo state transition testing để tìm ra các lỗi."
+
+    fused_text, hints = consensus.fuse_transcripts(primary_whisper, secondary_nemotron)
+    assert len(hints) >= 1
+    assert hints[0]["candidate_term"] == "State Transition Testing"
+    assert hints[0]["method"] == "Dual_Engine_Consensus"
+
+    # End-to-end processing with dual engine consensus
+    system_p = ProposedSystemP(tax, acoustic_scorer=None, acceptance_threshold=0.50, enable_consensus=True)
+    res = system_p.process_utterance(primary_whisper, secondary_transcript=secondary_nemotron)
+
+    predicted_terms = [t.term for t in res["predicted_terms"]]
+    assert "state transition testing" in predicted_terms
+    assert "State Transition Testing" in res["revised_transcript"]
+
+    print("  -> Passed Dual-Engine ASR Consensus Front-End!")
