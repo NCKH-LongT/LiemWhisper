@@ -14,6 +14,9 @@ from .baselines import (
     GlossaryPromptingASR,
     LexicalFuzzyMatcher,
 )
+from .neural_corrector import (
+    NeuralErrorCorrector,
+)
 
 __all__ = [
     "TextNormalizer",
@@ -27,4 +30,5 @@ __all__ = [
     "ExactMatchingBaseline",
     "GlossaryPromptingASR",
     "LexicalFuzzyMatcher",
+    "NeuralErrorCorrector",
 ]

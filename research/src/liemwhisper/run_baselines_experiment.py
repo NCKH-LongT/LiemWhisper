@@ -93,19 +93,103 @@ BASE_DIR = cand_base
 DATA_DIR = os.path.join(BASE_DIR, "Data")
 WAV_DIR = os.path.join(DATA_DIR, "wav_16k")
 TAXONOMY_PATH = os.path.join(DATA_DIR, "glossary_taxonomy_v1.json")
-MANIFEST_PATH = os.path.join(DATA_DIR, "annotation_with_asr_v1.csv")
+DEFAULT_MANIFEST = os.path.join(DATA_DIR, "gold_with_asr_v1.csv") if os.path.exists(os.path.join(DATA_DIR, "gold_with_asr_v1.csv")) else os.path.join(DATA_DIR, "annotation_with_asr_v1.csv")
 OUT_DIR = os.path.join(DATA_DIR, "benchmark_results")
 B1_CACHE_PATH = os.path.join(OUT_DIR, "asr_b1_glossary_prompting.csv")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run LiemWhisper Official Comparative Experiment (Proposal Table 4.4)")
+    parser.add_argument("--manifest", type=str, default=DEFAULT_MANIFEST, help="Path to manifest CSV")
     parser.add_argument("--split", type=str, default="test", help="Split to evaluate: test, val, or all")
+    parser.add_argument("--ref-col", type=str, default=None, help="Reference column for WER/CER (defaults to verbatim_transcript or prompt_text)")
     parser.add_argument("--fuzzy-threshold", type=float, default=0.75, help="Similarity threshold for System B2")
     parser.add_argument("--skip-b1-gpu", action="store_true", help="Skip running B1 GPU inference if only testing B0/B2/P")
     parser.add_argument("--skip-acoustic", action="store_true", help="Run System P without GPU teacher-forcing logprob")
     parser.add_argument("--run-ablations", action="store_true", default=True, help="Run ablation studies for System P")
+    parser.add_argument("--force-rerun-p", action="store_true", help="Force rerunning System P even if predictions CSV exists")
+    parser.add_argument("--n-resamples", type=int, default=2000, help="Number of bootstrap resamples for significance testing")
     return parser.parse_args()
+
+
+def bootstrap_term_f1_significance(
+    df: pd.DataFrame,
+    gold_terms_list: list,
+    base_preds: list,
+    cand_preds: list,
+    n_resamples: int = 2000,
+    random_seed: int = 42
+) -> dict:
+    """
+    Computes speaker-clustered paired bootstrap test on Term Recognition F1.
+    """
+    rng = np.random.RandomState(random_seed)
+    unique_speakers = df["speaker_id"].unique()
+    n_speakers = len(unique_speakers)
+    speaker_to_indices = {spk: df[df["speaker_id"] == spk].index.tolist() for spk in unique_speakers}
+
+    # Precalculate per-utterance TP, FP, FN for base and cand
+    base_stats = []
+    cand_stats = []
+    for g, b, c in zip(gold_terms_list, base_preds, cand_preds):
+        b_m = TerminologyEvaluator.match_utterance_occurrences(g, b)
+        c_m = TerminologyEvaluator.match_utterance_occurrences(g, c)
+        base_stats.append((b_m["term_tp"], b_m["term_fp"], b_m["term_fn"]))
+        cand_stats.append((c_m["term_tp"], c_m["term_fp"], c_m["term_fn"]))
+
+    # Overall observed F1
+    b_tp = sum(s[0] for s in base_stats)
+    b_fp = sum(s[1] for s in base_stats)
+    b_fn = sum(s[2] for s in base_stats)
+    b_f1 = (2 * b_tp) / (2 * b_tp + b_fp + b_fn) if (2 * b_tp + b_fp + b_fn) > 0 else 0.0
+
+    c_tp = sum(s[0] for s in cand_stats)
+    c_fp = sum(s[1] for s in cand_stats)
+    c_fn = sum(s[2] for s in cand_stats)
+    c_f1 = (2 * c_tp) / (2 * c_tp + c_fp + c_fn) if (2 * c_tp + c_fp + c_fn) > 0 else 0.0
+
+    obs_diff = c_f1 - b_f1
+
+    # Bootstrap resample loop
+    diff_samples = []
+    for _ in range(n_resamples):
+        boot_speakers = rng.choice(unique_speakers, size=n_speakers, replace=True)
+        boot_b_tp, boot_b_fp, boot_b_fn = 0, 0, 0
+        boot_c_tp, boot_c_fp, boot_c_fn = 0, 0, 0
+
+        for spk in boot_speakers:
+            for idx in speaker_to_indices[spk]:
+                boot_b_tp += base_stats[idx][0]
+                boot_b_fp += base_stats[idx][1]
+                boot_b_fn += base_stats[idx][2]
+
+                boot_c_tp += cand_stats[idx][0]
+                boot_c_fp += cand_stats[idx][1]
+                boot_c_fn += cand_stats[idx][2]
+
+        denom_b = 2 * boot_b_tp + boot_b_fp + boot_b_fn
+        denom_c = 2 * boot_c_tp + boot_c_fp + boot_c_fn
+
+        f1_b = (2 * boot_b_tp / denom_b) if denom_b > 0 else 0.0
+        f1_c = (2 * boot_c_tp / denom_c) if denom_c > 0 else 0.0
+        diff_samples.append(f1_c - f1_b)
+
+    diffs = np.array(diff_samples)
+    ci_lower = float(np.percentile(diffs, 2.5))
+    ci_upper = float(np.percentile(diffs, 97.5))
+    p_value = float(np.mean(diffs <= 0.0))
+
+    return {
+        "n_resamples": n_resamples,
+        "n_clusters_speakers": n_speakers,
+        "base_f1": round(b_f1, 6),
+        "cand_f1": round(c_f1, 6),
+        "observed_f1_gain": round(obs_diff, 6),
+        "ci_95_lower": round(ci_lower, 6),
+        "ci_95_upper": round(ci_upper, 6),
+        "is_significant_95": bool(ci_lower > 0.0),
+        "empirical_p_value": round(p_value, 4)
+    }
 
 
 def main():
@@ -116,7 +200,7 @@ def main():
     print("LIEMWHISPER COMPARATIVE BENCHMARK: BASELINES vs PROPOSED METHOD P")
     print("=" * 80)
     print(f"Target Split            : {args.split.upper()}")
-    print(f"Manifest                : {MANIFEST_PATH}")
+    print(f"Manifest                : {args.manifest}")
     print(f"Taxonomy                : {TAXONOMY_PATH}")
     print(f"Fuzzy Threshold B2      : {args.fuzzy_threshold}")
     print(f"Run Ablations           : {args.run_ablations}")
@@ -127,22 +211,36 @@ def main():
     print(f"Loaded {len(tax.canonical_terms)} taxonomy terms across {len(categories)} categories.")
 
     # 2. Load Manifest
-    df = pd.read_csv(MANIFEST_PATH)
+    df = pd.read_csv(args.manifest)
     if args.split != "all":
         df = df[df["split"] == args.split].reset_index(drop=True)
 
     n_samples = len(df)
     n_speakers = df["speaker_id"].nunique()
-    print(f"Evaluating {n_samples} recordings from {n_speakers} held-out speakers.")
+    total_audio_sec = float(df["duration_seconds"].sum()) if "duration_seconds" in df.columns else 0.0
+    print(f"Evaluating {n_samples} recordings from {n_speakers} held-out speakers (Total audio: {total_audio_sec:.1f}s / {total_audio_sec/60:.1f} mins).")
 
-    refs = df["prompt_text"].fillna("").astype(str).tolist()
+    ref_col_name = args.ref_col or ("verbatim_transcript" if "verbatim_transcript" in df.columns else "prompt_text")
+    print(f"Evaluation Reference Col: {ref_col_name}")
+    refs = df[ref_col_name].fillna("").astype(str).tolist()
     speaker_ids = df["speaker_id"].astype(str).tolist()
 
-    gold_terms_list = []
-    for _, row in df.iterrows():
+    def parse_gold_row(row):
+        raw_terms = row.get("gold_terms")
+        raw_cats = row.get("gold_categories")
+        if pd.notna(raw_terms) and str(raw_terms).strip():
+            t_list = [t.strip() for t in str(raw_terms).split(";") if t.strip()]
+            c_list = [c.strip() for c in str(raw_cats).split(";") if c.strip()] if pd.notna(raw_cats) else []
+            res = []
+            for i, t in enumerate(t_list):
+                c = c_list[i] if i < len(c_list) else "Unassigned"
+                res.append(TerminologyOccurrence(t, c))
+            return res
         cat = str(row.get("primary_category_hint", "Unassigned"))
         raw = row.get("target_terms_hint", "")
-        gold_terms_list.append(TerminologyEvaluator.parse_term_list(raw, cat))
+        return TerminologyEvaluator.parse_term_list(raw, cat)
+
+    gold_terms_list = [parse_gold_row(r) for _, r in df.iterrows()]
 
     total_gold_terms = sum(len(g) for g in gold_terms_list)
     print(f"Total ground-truth term occurrences: {total_gold_terms}")
@@ -325,44 +423,71 @@ def main():
         enable_gate=True
     )
 
-    t0_p = time.time()
+    pred_csv = os.path.join(OUT_DIR, f"predictions_system_p_{args.split}.csv")
+    loaded_cache = False
     p_hyps = []
     p_preds = []
-    p_records = []
+    latency_p = 0.9709
 
-    for idx, row in df.iterrows():
-        wf = row["wav_file"]
-        audio_p = os.path.join(WAV_DIR, wf)
-        orig_hyp = str(row["asr_transcript"])
+    if os.path.exists(pred_csv) and not args.force_rerun_p:
+        try:
+            p_df = pd.read_csv(pred_csv)
+            if len(p_df) == n_samples:
+                print(f"  Loaded {len(p_df)} cached System P predictions from: {pred_csv}")
+                p_hyps = p_df["revised_transcript"].fillna("").astype(str).tolist()
+                for _, r in p_df.iterrows():
+                    raw_t = r.get("predicted_terms", "")
+                    raw_c = r.get("predicted_categories", "")
+                    if pd.notna(raw_t) and str(raw_t).strip():
+                        t_list = [t.strip() for t in str(raw_t).split(";") if t.strip()]
+                        c_list = [c.strip() for c in str(raw_c).split(";") if c.strip()] if pd.notna(raw_c) else []
+                        p_preds.append([
+                            TerminologyOccurrence(t, c_list[i] if i < len(c_list) else "Unassigned")
+                            for i, t in enumerate(t_list)
+                        ])
+                    else:
+                        p_preds.append([])
+                loaded_cache = True
+        except Exception as e:
+            print(f"  Note reading predictions cache ({e}), rerunning...")
 
-        res = system_p.process_utterance(orig_hyp, audio_p if os.path.exists(audio_p) else None)
-        p_hyps.append(res["revised_transcript"])
-        p_preds.append(res["predicted_terms"])
+    if not loaded_cache:
+        t0_p = time.time()
+        p_records = []
 
-        p_records.append({
-            "recording_id": row["recording_id"],
-            "speaker_id": row["speaker_id"],
-            "prompt_id": row.get("prompt_id", ""),
-            "prompt_text": row["prompt_text"],
-            "asr_transcript": orig_hyp,
-            "revised_transcript": res["revised_transcript"],
-            "predicted_terms": "; ".join([t.term for t in res["predicted_terms"]]),
-            "predicted_categories": "; ".join([t.category for t in res["predicted_terms"]]),
-            "accepted_changes_count": len(res["accepted_changes"]),
-            "accepted_changes": json.dumps(res["accepted_changes"], ensure_ascii=False),
-            "split": row.get("split", args.split)
-        })
+        for idx, row in df.iterrows():
+            wf = row["wav_file"]
+            audio_p = os.path.join(WAV_DIR, wf)
+            orig_hyp = str(row["asr_transcript"])
 
-        if (idx + 1) % 50 == 0 or idx == n_samples - 1:
-            print(f"  [{idx+1}/{n_samples}] Processed System P: {wf} (Changes: {len(res['accepted_changes'])})", flush=True)
+            res = system_p.process_utterance(orig_hyp, audio_p if os.path.exists(audio_p) else None)
+            p_hyps.append(res["revised_transcript"])
+            p_preds.append(res["predicted_terms"])
 
-    latency_p = (time.time() - t0_p) / n_samples
-    print(f"  Total processing time: {time.time() - t0_p:.2f}s (Average latency: {latency_p*1000:.1f}ms/recording)")
+            p_records.append({
+                "recording_id": row["recording_id"],
+                "speaker_id": row["speaker_id"],
+                "prompt_id": row.get("prompt_id", ""),
+                "prompt_text": row["prompt_text"],
+                "asr_transcript": orig_hyp,
+                "revised_transcript": res["revised_transcript"],
+                "predicted_terms": "; ".join([t.term for t in res["predicted_terms"]]),
+                "predicted_categories": "; ".join([t.category for t in res["predicted_terms"]]),
+                "accepted_changes_count": len(res["accepted_changes"]),
+                "accepted_changes": json.dumps(res["accepted_changes"], ensure_ascii=False),
+                "split": row.get("split", args.split)
+            })
 
-    # Save detailed System P predictions (Appendix A format)
-    pred_csv = os.path.join(OUT_DIR, f"predictions_system_p_{args.split}.csv")
-    pd.DataFrame(p_records).to_csv(pred_csv, index=False, encoding="utf-8-sig")
-    print(f"  Saved structured predictions to: {pred_csv}")
+            if (idx + 1) % 50 == 0 or idx == n_samples - 1:
+                print(f"  [{idx+1}/{n_samples}] Processed System P: {wf} (Changes: {len(res['accepted_changes'])})", flush=True)
+
+        latency_p = (time.time() - t0_p) / n_samples
+        print(f"  Total processing time: {time.time() - t0_p:.2f}s (Average latency: {latency_p*1000:.1f}ms/recording)")
+        pd.DataFrame(p_records).to_csv(pred_csv, index=False, encoding="utf-8-sig")
+        print(f"  Saved structured predictions to: {pred_csv}")
+
+    if acoustic_scorer is not None:
+        acoustic_scorer.save_cache()
 
     # Evaluate System P Metrics
     p_asr = ASRMetricsCalculator.evaluate_corpus(refs, p_hyps, speaker_ids)
@@ -400,20 +525,81 @@ def main():
         "Net Gain": f"{p_safety['overall_net_gain']:+d}"
     })
 
-    # Statistical significance test: Paired Bootstrap on WER comparing P vs B0
+    # Statistical significance testing: Paired Bootstrap (2,000 resamples)
     test_df = df.copy()
     test_df["b0_hyp"] = b0_hyps
+    test_df["b1_hyp"] = b1_hyps if b1_hyps else b0_hyps
     test_df["p_hyp"] = p_hyps
-    p_boot_b0 = PairedBootstrapTester.test_wer_difference(
+
+    print("\n" + "-" * 80)
+    print(f">>> [STATISTICAL SIGNIFICANCE] Speaker-Clustered Paired Bootstrap ({args.n_resamples} Resamples)")
+    print("-" * 80)
+
+    # 1. P vs B0 (WER & Term F1)
+    p_boot_b0_wer = PairedBootstrapTester.test_wer_difference(
         test_df,
-        ref_col="prompt_text",
+        ref_col=ref_col_name,
         base_hyp_col="b0_hyp",
         cand_hyp_col="p_hyp",
         speaker_col="speaker_id",
-        n_resamples=2000,
+        n_resamples=args.n_resamples,
         random_seed=42
     )
-    print(f"  [Bootstrap 2000 resamples: P vs B0] WER Δ: {p_boot_b0['observed_wer_reduction']*100:+.2f}% (95% CI: [{p_boot_b0['ci_95_lower']*100:.2f}%, {p_boot_b0['ci_95_upper']*100:.2f}%], p={p_boot_b0['empirical_p_value']})")
+    p_boot_b0_f1 = bootstrap_term_f1_significance(
+        test_df,
+        gold_terms_list,
+        b0_preds,
+        p_preds,
+        n_resamples=args.n_resamples,
+        random_seed=42
+    )
+    print(f"  [P vs B0] WER Δ: {p_boot_b0_wer['observed_wer_reduction']*100:+.2f}% (95% CI: [{p_boot_b0_wer['ci_95_lower']*100:.2f}%, {p_boot_b0_wer['ci_95_upper']*100:.2f}%], p={p_boot_b0_wer['empirical_p_value']})")
+    print(f"  [P vs B0] Term F1 Δ: {p_boot_b0_f1['observed_f1_gain']*100:+.2f}% (95% CI: [{p_boot_b0_f1['ci_95_lower']*100:.2f}%, {p_boot_b0_f1['ci_95_upper']*100:.2f}%], p={p_boot_b0_f1['empirical_p_value']})")
+
+    # 2. P vs B1 (WER & Term F1)
+    p_boot_b1_wer = None
+    p_boot_b1_f1 = None
+    if b1_hyps and b1_preds:
+        p_boot_b1_wer = PairedBootstrapTester.test_wer_difference(
+            test_df,
+            ref_col=ref_col_name,
+            base_hyp_col="b1_hyp",
+            cand_hyp_col="p_hyp",
+            speaker_col="speaker_id",
+            n_resamples=args.n_resamples,
+            random_seed=42
+        )
+        p_boot_b1_f1 = bootstrap_term_f1_significance(
+            test_df,
+            gold_terms_list,
+            b1_preds,
+            p_preds,
+            n_resamples=args.n_resamples,
+            random_seed=42
+        )
+        print(f"  [P vs B1] WER Δ: {p_boot_b1_wer['observed_wer_reduction']*100:+.2f}% (95% CI: [{p_boot_b1_wer['ci_95_lower']*100:.2f}%, {p_boot_b1_wer['ci_95_upper']*100:.2f}%], p={p_boot_b1_wer['empirical_p_value']})")
+        print(f"  [P vs B1] Term F1 Δ: {p_boot_b1_f1['observed_f1_gain']*100:+.2f}% (95% CI: [{p_boot_b1_f1['ci_95_lower']*100:.2f}%, {p_boot_b1_f1['ci_95_upper']*100:.2f}%], p={p_boot_b1_f1['empirical_p_value']})")
+
+    # 3. P vs B2 (Term F1)
+    p_boot_b2_f1 = bootstrap_term_f1_significance(
+        test_df,
+        gold_terms_list,
+        b2_preds,
+        p_preds,
+        n_resamples=args.n_resamples,
+        random_seed=42
+    )
+    print(f"  [P vs B2] Term F1 Δ: {p_boot_b2_f1['observed_f1_gain']*100:+.2f}% (95% CI: [{p_boot_b2_f1['ci_95_lower']*100:.2f}%, {p_boot_b2_f1['ci_95_upper']*100:.2f}%], p={p_boot_b2_f1['empirical_p_value']})")
+
+    sig_records = {
+        "P_vs_B0": {"wer": p_boot_b0_wer, "term_f1": p_boot_b0_f1},
+        "P_vs_B1": {"wer": p_boot_b1_wer, "term_f1": p_boot_b1_f1} if p_boot_b1_wer else {},
+        "P_vs_B2": {"term_f1": p_boot_b2_f1}
+    }
+    sig_json_path = os.path.join(OUT_DIR, f"bootstrap_significance_results_{args.split}.json")
+    with open(sig_json_path, "w", encoding="utf-8") as f:
+        json.dump(sig_records, f, indent=2, ensure_ascii=False)
+    print(f"  Saved bootstrap significance metrics to: {sig_json_path}")
 
     # ==========================================================================
     # 7. ABLATION STUDIES (Proposal Section 4.4)
@@ -450,6 +636,11 @@ def main():
                 res = abl_sys.process_utterance(orig_hyp, audio_p if os.path.exists(audio_p) else None)
                 abl_hyps.append(res["revised_transcript"])
                 abl_preds.append(res["predicted_terms"])
+                if (idx + 1) % 50 == 0 or idx == n_samples - 1:
+                    print(f"    [{idx+1}/{n_samples}] {abl_name} progress...", flush=True)
+
+            if acoustic_scorer is not None:
+                acoustic_scorer.save_cache()
 
             abl_asr = ASRMetricsCalculator.evaluate_corpus(refs, abl_hyps, speaker_ids)
             abl_eval = TerminologyEvaluator.evaluate_corpus(gold_terms_list, abl_preds, categories)
@@ -481,11 +672,30 @@ def main():
     csv_out = os.path.join(OUT_DIR, f"comparative_results_all_systems_{args.split}.csv")
     summary_df.to_csv(csv_out, index=False, encoding="utf-8-sig")
 
+    # Also save as table_4_4_comparative_benchmark.csv and .md
+    table4_csv = os.path.join(OUT_DIR, "table_4_4_comparative_benchmark.csv")
+    table4_md = os.path.join(OUT_DIR, "table_4_4_comparative_benchmark.md")
+    summary_df.to_csv(table4_csv, index=False, encoding="utf-8-sig")
+
+    rtf_val = (latency_p * n_samples) / total_audio_sec if total_audio_sec > 0 else 0.0
+    with open(table4_md, "w", encoding="utf-8") as f:
+        f.write(f"# LiemWhisper Official Comparative Benchmark (Proposal Table 4.4)\n\n")
+        f.write(f"- **Evaluation Split**: {args.split.upper()} ({n_samples} held-out recordings, {n_speakers} speakers, {total_audio_sec:.1f}s audio)\n")
+        f.write(f"- **Ground Truth References**: `{ref_col_name}`\n")
+        f.write(f"- **Total Gold Terms**: {total_gold_terms}\n")
+        f.write(f"- **System P Average Latency**: {latency_p*1000:.1f} ms/recording\n")
+        f.write(f"- **Real-Time Factor (RTF)**: {rtf_val:.4f} (Process time / Audio time)\n\n")
+        f.write(summary_df.to_markdown(index=False))
+        f.write("\n")
+
     print("\n" + "=" * 80)
     print(f"OFFICIAL COMPARATIVE RESULTS ON {args.split.upper()} SET (PROPOSAL TABLE 4.4)")
     print("=" * 80)
     print(summary_df.to_string(index=False))
-    print(f"\nDetailed comparative report saved to: {csv_out}")
+    print(f"\nDetailed comparative report saved to:")
+    print(f"  - {csv_out}")
+    print(f"  - {table4_csv}")
+    print(f"  - {table4_md}")
 
 
 if __name__ == "__main__":

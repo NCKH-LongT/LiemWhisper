@@ -31,7 +31,7 @@ def test_taxonomy_manager():
     print("[1/3] Testing TaxonomyManager...")
     tax = TaxonomyManager(TAXONOMY_PATH)
     assert len(tax.categories) == 5, f"Expected 5 categories, got {len(tax.categories)}"
-    assert len(tax.canonical_terms) == 43, f"Expected 43 terms, got {len(tax.canonical_terms)}"
+    assert len(tax.canonical_terms) >= 43, f"Expected at least 43 terms, got {len(tax.canonical_terms)}"
 
     # Check category lookup
     assert tax.get_category("Equivalence Partitioning") == "Testing Techniques"

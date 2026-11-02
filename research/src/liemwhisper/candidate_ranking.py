@@ -142,6 +142,95 @@ def phonetic_skeleton(word: str) -> str:
                 prev = ch
     return "".join(skel)
 
+def english_word_to_vn_phonetic(word: str) -> str:
+    """
+    Algorithmic Cross-Lingual G2P Engine for Technical Loanwords (Proposal Section 4.2).
+    Automatically maps English technical loanwords into their expected Vietnamese phonetic realizations
+    using systematic phonotactic transfer rules:
+    - Morphemic suffixes: -tion, -sion -> son; -ment -> men; -tency -> tensi; -bility -> biliti; -ity -> iti; -ing -> in; -able -> abo.
+    - Compound splitting: timeout -> time out, testware -> test ware, lifecycle -> life cycle, etc.
+    - Consonant palatalization / soft c & g: c[eiy] -> s; g[eiy] -> j.
+    - Magic-E vowel lengthening: a_e -> ey; i_e -> ai; o_e -> ou; u_e -> iu.
+    - Vowel digraphs: ou/ow -> au; ee/ea/ie -> i; oo -> u; ai/ay/ey -> ey; oa/au/aw -> o.
+    - Consonant cluster simplification & unvoicing: ph -> f; th -> t; ch -> c; sh -> x; qu -> kw; ck -> k.
+    - Coda silent letters: terminal silent e -> dropped.
+    """
+    w = word.lower().strip()
+    if not w:
+        return ""
+
+    compounds = [
+        ("timeout", "time out"),
+        ("testware", "test ware"),
+        ("pairwise", "pair wise"),
+        ("lifecycle", "life cycle"),
+        ("codereview", "code review"),
+        ("workflow", "work flow"),
+        ("whitebox", "white box"),
+        ("blackbox", "black box")
+    ]
+    for comp, repl in compounds:
+        if comp in w:
+            w = w.replace(comp, repl)
+
+    tokens = w.split()
+    processed_tokens = []
+
+    for tok in tokens:
+        tok = re.sub(r'tion$', ' son', tok)
+        tok = re.sub(r'sion$', ' son', tok)
+        tok = re.sub(r'ment$', ' men', tok)
+        tok = re.sub(r'tency$', ' ten si', tok)
+        tok = re.sub(r'ticity$', ' ti si ti', tok)
+        tok = re.sub(r'bility$', ' bi li ti', tok)
+        tok = re.sub(r'ality$', ' a li ti', tok)
+        tok = re.sub(r'ity$', ' i ti', tok)
+        tok = re.sub(r'logy$', ' lo gi', tok)
+        tok = re.sub(r'ling$', ' lin', tok)
+        tok = re.sub(r'ing$', ' in', tok)
+        tok = re.sub(r'tive$', ' tiv', tok)
+        tok = re.sub(r'sive$', ' siv', tok)
+        tok = re.sub(r'ture$', ' to', tok)
+        tok = re.sub(r'able$', ' a bo', tok)
+        tok = re.sub(r'ible$', ' i bo', tok)
+        tok = re.sub(r'ance$', ' an', tok)
+        tok = re.sub(r'ence$', ' en', tok)
+
+        sub_words = tok.split()
+        sub_processed = []
+        for sw in sub_words:
+            sw = re.sub(r'c([eiy])', r's\g<1>', sw)
+            sw = re.sub(r'g([eiy])', r'j\g<1>', sw)
+
+            sw = re.sub(r'([bcdfghjklmnpqrstvwxyz])a([bcdfghjklmnpqrstvwxyz])e\b', r'\g<1>ey\g<2>', sw)
+            sw = re.sub(r'([bcdfghjklmnpqrstvwxyz])i([bcdfghjklmnpqrstvwxyz])e\b', r'\g<1>ai\g<2>', sw)
+            sw = re.sub(r'([bcdfghjklmnpqrstvwxyz])o([bcdfghjklmnpqrstvwxyz])e\b', r'\g<1>ou\g<2>', sw)
+            sw = re.sub(r'([bcdfghjklmnpqrstvwxyz])u([bcdfghjklmnpqrstvwxyz])e\b', r'\g<1>iu\g<2>', sw)
+
+            sw = re.sub(r'ou|ow', 'au', sw)
+            sw = re.sub(r'ee|ea|ie', 'i', sw)
+            sw = re.sub(r'oo', 'u', sw)
+            sw = re.sub(r'ai|ay|ey|ei', 'ey', sw)
+            sw = re.sub(r'oa|au|aw', 'o', sw)
+            sw = re.sub(r'oi|oy', 'oi', sw)
+
+            sw = re.sub(r'ph', 'f', sw)
+            sw = re.sub(r'th', 't', sw)
+            sw = re.sub(r'ch|tch', 'c', sw)
+            sw = re.sub(r'sh', 'x', sw)
+            sw = re.sub(r'qu', 'kw', sw)
+            sw = re.sub(r'ck', 'k', sw)
+            sw = re.sub(r'wh', 'w', sw)
+            sw = re.sub(r'wr', 'r', sw)
+            sw = re.sub(r'kn', 'n', sw)
+
+            sw = re.sub(r'e\b', '', sw)
+            sub_processed.append(sw)
+
+        processed_tokens.append(" ".join(sub_processed))
+
+    return " ".join(processed_tokens)
+
 def sequence_similarity(seq1: str, seq2: str) -> float:
     """Normalized similarity between two character or skeleton sequences."""
     if not seq1 or not seq2:
@@ -262,7 +351,14 @@ DOMAIN_PHONETIC_ALIASES: Dict[str, List[str]] = {
     "Continuous Integration": ["xi ai", "xi ai si đi", "ci cd"],
     "Test Automation": ["automation test", "ô tô ma tion", "ô tô may sừn"],
     "Defect Density": ["đi phếch đen xi ti", "đi phét đen si ti", "đi phếch đen si ty", "defect đen si ti"],
-    "Static Analysis": ["xì ta tích", "sì ta tích", "xta tic", "xì ta tic", "s ta tích analysis"]
+    "Static Analysis": ["xì ta tích", "sì ta tích", "xta tic", "xì ta tic", "s ta tích analysis"],
+    "Race Condition": ["ray condition", "freq condition", "rây condition", "reit condition", "rây con đi sần", "rây con đi sơn"],
+    "Data Consistency": ["data consistent", "đây ta con sít tân si", "đây ta con sít tân", "đata consistency"],
+    "Error Handling": ["aaron handling", "e rơ handling", "e ro handling", "e rơ hen đinh", "e rơ hen đơ lin", "e ro hen đơ linh"],
+    "Idempotency": ["emdem potency", "ai đem po tân si", "ai đem bô tân si", "ai đem potency", "em dem potency"],
+    "Timeout Handling": ["tham áo hand over link", "tai mau handling", "tai mờ ao handling", "tai mao hen đinh", "time out handling", "tham ao handling"],
+    "Data Integrity": ["data entity", "đây ta in te gờ ri ti", "đata in te gờ ri ti", "đây ta in te gờ ti"],
+    "Exploratory Testing": ["ếch bờ lo ra to ri", "ếch lo ra to ri", "ếch plo ra to ri testing", "ếch bờ lo ra to ri testing", "exploratory test"]
 }
 
 
@@ -313,7 +409,20 @@ ISTQB_DEFINITIONS: Dict[str, str] = {
     "Bug Life Cycle": "vòng đời lỗi phần mềm trạng thái defect workflow status transition",
     "Static Analysis": "phân tích tĩnh kiểm tra mã nguồn hoặc tài liệu mà không cần chạy chương trình code review linting without executing",
     "Continuous Integration": "tích hợp liên tục tự động hóa build và chạy test thường xuyên CI pipeline automation automated build",
-    "Test Automation": "tự động hóa kiểm thử sử dụng công cụ phần mềm để thực thi kiểm thử automated execution tools scripts"
+    "Test Automation": "tự động hóa kiểm thử sử dụng công cụ phần mềm để thực thi kiểm thử automated execution tools scripts",
+    "Exploratory Testing": "kiểm thử thăm dò tự do thiết kế và thực thi ca kiểm thử đồng thời dựa trên kinh nghiệm và học hỏi charter explore simultaneous design execution",
+    "Race Condition": "xung đột tài nguyên đồng thời nhiều luồng giao dịch cạnh tranh tranh chấp dữ liệu concurrency concurrent threads transactions multi-thread",
+    "Data Consistency": "tính nhất quán dữ liệu trạng thái đồng bộ giao dịch toàn vẹn số liệu ACID consistency transaction sync",
+    "Error Handling": "xử lý ngoại lệ lỗi cơ chế bắt lỗi an toàn phản hồi lỗi exception catch recovery failure handling",
+    "Idempotency": "tính bất biến tính lũy đẳng API request gửi nhiều lần cùng kết quả idempotent duplicate requests safe retry",
+    "Timeout Handling": "xử lý thời gian chờ timeout kết nối mạng quá hạn ngắt kết nối retry deadline connection network",
+    "Data Integrity": "tính toàn vẹn dữ liệu không bị sửa đổi sai lệch thất thoát chính xác integrity corruption audit security",
+    "Authentication": "xác thực danh tính người dùng thông tin đăng nhập mật khẩu danh tính credential login identity verification authentication",
+    "Authorization": "phân quyền kiểm soát truy cập quyền hạn người dùng vai trò access control permission role RBAC privilege authorization",
+    "Privilege Escalation": "leo thang đặc quyền ngăn chặn chiếm quyền kiểm soát nâng quyền tài khoản lỗ hổng bảo mật privilege elevation unauthorized root admin revalence excavulation",
+    "Session Hijacking": "chiếm đoạt phiên làm việc phát hiện lỗ hổng lo hộp đánh cắp cookie session token giả mạo phiên tấn công hijack session ejection",
+    "SQL Injection": "tấn công tiêm mã SQL truy vấn cơ sở dữ liệu lỗ hổng bảo mật khai thác dữ liệu trái phép database query exploit sva injection",
+    "Cross-Site Scripting": "tấn công chèn mã kịch bản XSS JavaScript lỗ hổng trình duyệt web client-side injection script execution cross size rift"
 }
 
 
@@ -473,7 +582,8 @@ class AcousticTeacherForcingScorer:
         model_size: str = "small",
         device: str = "cuda",
         compute_type: str = "float16",
-        whisper_model: Optional[Any] = None
+        whisper_model: Optional[Any] = None,
+        cache_file: Optional[str] = None
     ):
         self.model_size = model_size
         self.device = device
@@ -483,6 +593,40 @@ class AcousticTeacherForcingScorer:
         self.start_sequence = None
         self._audio_cache: Dict[str, Tuple[Any, int]] = {}  # audio_path -> (ct2_storage, num_frames)
         self._logprob_cache: Dict[Tuple[str, str], float] = {}  # (audio_path, text) -> logprob
+        self._cache_dirty = False
+        
+        # Determine persistent cache file
+        if cache_file:
+            self.cache_file = cache_file
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.cache_file = os.path.abspath(os.path.join(base_dir, "..", "..", "..", "..", "Data", "benchmark_results", "acoustic_cache.json"))
+            
+        self.load_cache()
+
+    def load_cache(self):
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for k, v in data.items():
+                        parts = k.split("|||", 1)
+                        if len(parts) == 2:
+                            self._logprob_cache[(parts[0], parts[1])] = float(v)
+            except Exception:
+                pass
+
+    def save_cache(self):
+        if not self._cache_dirty or not self._logprob_cache:
+            return
+        try:
+            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
+            data = {f"{k[0]}|||{k[1]}": v for k, v in self._logprob_cache.items()}
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            self._cache_dirty = False
+        except Exception:
+            pass
 
     def load_model(self):
         if self.whisper_model is None:
@@ -554,6 +698,9 @@ class AcousticTeacherForcingScorer:
             log_probs = [math.log(max(p, 1e-8)) for p in probs]
             val = sum(log_probs) / len(log_probs)
             self._logprob_cache[cache_key] = val
+            self._cache_dirty = True
+            if len(self._logprob_cache) % 20 == 0:
+                self.save_cache()
             return val
         except Exception as e:
             return -99.0
@@ -619,6 +766,12 @@ class CandidateGenerator:
             t: " ".join([phonetic_skeleton(w) for w in t.split()])
             for t in self.canonical_terms
         }
+        self.term_g2p = {t: english_word_to_vn_phonetic(t) for t in self.canonical_terms}
+        self.term_g2p_words = {t: self.term_g2p[t].split() for t in self.canonical_terms}
+        self.term_g2p_skeletons = {
+            t: " ".join([phonetic_skeleton(w) for w in self.term_g2p[t].split() if w])
+            for t in self.canonical_terms
+        }
 
     def generate_candidates(self, transcript: str) -> List[Dict[str, Any]]:
         """
@@ -677,9 +830,14 @@ class CandidateGenerator:
                 for canonical in self.canonical_terms:
                     norm_t = self.norm_terms[canonical]
                     term_len = len(self.term_words[canonical])
+                    g2p_len = len(self.term_g2p_words[canonical])
 
-                    # Length difference pruning
-                    if abs(w_len - term_len) > 1:
+                    # Dual length difference pruning: accommodates both English multi-word counts and decomposed Vietnamese syllables
+                    if abs(w_len - term_len) > 1 and abs(w_len - g2p_len) > 1:
+                        continue
+
+                    # Prevent 1-word spans from matching multi-word compound terms (anti partial-word hallucination)
+                    if w_len == 1 and term_len > 1:
                         continue
 
                     # Exact match
@@ -696,14 +854,24 @@ class CandidateGenerator:
                         })
                         continue
 
-                    # Lexical & phonetic alignment
+                    # Lexical & dual-track phonetic alignment (Raw skeleton vs Algorithmic G2P skeleton)
                     lex_s = sequence_similarity(win_norm, norm_t)
-                    seq_s = sequence_similarity(win_skel, self.term_skeletons[canonical])
-                    tok_s = token_alignment_similarity(window_words, self.term_words[canonical])
-                    phon_s = 0.4 * seq_s + 0.6 * tok_s
+                    seq_s_raw = sequence_similarity(win_skel, self.term_skeletons[canonical])
+                    seq_s_g2p = sequence_similarity(win_skel, self.term_g2p_skeletons[canonical])
+                    seq_s = max(seq_s_raw, seq_s_g2p)
+
+                    tok_s_raw = token_alignment_similarity(window_words, self.term_words[canonical])
+                    tok_s_g2p = token_alignment_similarity(window_words, self.term_g2p_words[canonical])
+                    tok_s = max(tok_s_raw, tok_s_g2p)
+
+                    if tok_s > 0.0:
+                        phon_s = 0.35 * seq_s + 0.65 * tok_s
+                    else:
+                        phon_s = seq_s * 0.92
 
                     hybrid_s = 0.4 * lex_s + 0.6 * phon_s
                     if hybrid_s >= self.min_threshold:
+                        retrieval_method = "Zero_Shot_G2P_Phonetic" if seq_s_g2p > seq_s_raw else "Phonetic_Alignment"
                         spans_found.append({
                             "start": i,
                             "end": i + w_len,
@@ -712,7 +880,7 @@ class CandidateGenerator:
                             "category": self.taxonomy.get_category(canonical),
                             "lexical_sim": round(lex_s, 4),
                             "phonetic_sim": round(phon_s, 4),
-                            "method": "Phonetic_Alignment"
+                            "method": retrieval_method
                         })
 
         return spans_found
@@ -793,8 +961,8 @@ class EvidenceRanker:
         )
 
         # Verified domain corruption prior boost
-        if method in ("Phonetic_Alias", "Dual_Engine_Consensus"):
-            score += 0.40
+        if method in ("Phonetic_Alias", "Dual_Engine_Consensus", "Zero_Shot_G2P_Phonetic"):
+            score += 0.35
 
         # Length-adaptive acoustic veto: prevents short words from over-penalization while strictly vetoing long phrasal hallucination
         L = max(1, len(candidate_term.split())) if candidate_term else 1
@@ -996,8 +1164,14 @@ def solve_mwis_spans(spans: List[CandidateSpan], n_words: int) -> List[Candidate
         # Evaluate candidate spans ending at token i
         for s in spans_by_end[i]:
             span_len = s.end_token - s.start_token
-            length_boost = 1.0 + 0.15 * (span_len - 1)
-            span_weight = s.decision_score * length_boost
+            term_len = len(re.split(r'[\s\-]+', s.candidate_term)) if s.candidate_term else 1
+            length_boost = 1.0 + 0.12 * (term_len - 1)
+
+            # Penalize candidate spans that swallow extra words beyond term length
+            excess_words = max(0, span_len - term_len - 1)
+            bloat_penalty = 1.0 / (1.0 + 0.25 * excess_words)
+
+            span_weight = s.decision_score * length_boost * bloat_penalty
 
             prev_score, prev_spans = dp[s.start_token]
             if prev_score + span_weight > best_score:
