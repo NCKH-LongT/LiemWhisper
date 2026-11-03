@@ -3,8 +3,9 @@ LiemWhisper Interactive Web Demo Studio
 =======================================
 A modern, responsive FastAPI Web UI allowing users to test LiemWhisper:
 1. Live text input (try any code-switched or corrupted Vietnamese-English phrase)
-2. Audio file upload / Microphone recording (.wav, .m4a, .mp3)
-3. Browse and listen to real test samples from the 245 held-out recordings
+2. Audio file upload / Microphone recording (.wav, .m4a, .mp3, .webm)
+3. Open-Vocabulary Terminology Recognition (Dual-Encoder Contrastive Learning + FAISS on Unseen Terms)
+4. Browse and listen to real test samples from the 245 held-out recordings
 
 Run:
     python Liem/LiemWhisper/research/src/liemwhisper/web_demo.py
@@ -68,15 +69,49 @@ def get_neural_corrector():
         neural_corrector_instance = NeuralErrorCorrector()
     return neural_corrector_instance
 
-# Find base paths
-base_dir = current_dir
-while base_dir and not os.path.exists(os.path.join(base_dir, "Data", "glossary_taxonomy_v1.json")):
-    parent = os.path.dirname(base_dir)
-    if parent == base_dir:
-        break
-    base_dir = parent
+contrastive_engine_instance = None
+def get_contrastive_engine():
+    global contrastive_engine_instance
+    if contrastive_engine_instance is None:
+        try:
+            from demo_contrastive import ContrastiveRetrievalEngine
+            contrastive_engine_instance = ContrastiveRetrievalEngine()
+        except Exception as e:
+            print(f"Error loading ContrastiveRetrievalEngine: {e}")
+            contrastive_engine_instance = None
+    return contrastive_engine_instance
 
-DATA_DIR = os.path.join(base_dir, "Data")
+
+def normalize_audio_to_wav16k(input_path: str, output_path: str):
+    """
+    Decodes any audio file (WebM, Opus, MP3, M4A, etc.) and resamples
+    it cleanly to 16,000 Hz Mono 16-bit PCM WAV using PyAV.
+    """
+    import av
+    container = av.open(input_path)
+    resampler = av.AudioResampler(format='s16', layout='mono', rate=16000)
+    output_container = av.open(output_path, 'w')
+    out_stream = output_container.add_stream('pcm_s16le', rate=16000)
+    out_stream.layout = 'mono'
+
+    try:
+        for frame in container.decode(audio=0):
+            for rf in resampler.resample(frame):
+                for packet in out_stream.encode(rf):
+                    output_container.mux(packet)
+        for packet in out_stream.encode(None):
+            output_container.mux(packet)
+    finally:
+        output_container.close()
+        container.close()
+
+
+# Resolve paths
+BASE_DIR = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "..", ".."))
+if not os.path.exists(os.path.join(BASE_DIR, "Data")):
+    # Fallback to repo root
+    BASE_DIR = os.path.abspath("D:/University/Capstone")
+DATA_DIR = os.path.join(BASE_DIR, "Data")
 TAXONOMY_PATH = os.path.join(DATA_DIR, "glossary_taxonomy_v1.json")
 WAV_DIR = os.path.join(DATA_DIR, "wav_16k")
 GOLD_CSV = os.path.join(DATA_DIR, "gold_with_asr_v1.csv")
@@ -172,20 +207,55 @@ async def process_text_endpoint(req: TextRequest):
 
 @app.post("/api/process_audio")
 async def process_audio_endpoint(file: UploadFile = File(...), engine: str = Form("proposal")):
-    # Save to temp
     ext = os.path.splitext(file.filename)[1] or ".wav"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    raw_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext).name
+    clean_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
 
     try:
+        content = await file.read()
+        with open(raw_tmp, "wb") as f:
+            f.write(content)
+
+        # 1. Normalize audio cleanly to 16kHz mono WAV to prevent WebM/Opus frame drops
+        try:
+            normalize_audio_to_wav16k(raw_tmp, clean_wav)
+            active_audio_path = clean_wav
+        except Exception as conv_err:
+            print(f"Audio normalization warning: {conv_err}. Using raw upload.")
+            active_audio_path = raw_tmp
+
         t0 = time.time()
-        # 1. Transcribe with Whisper Small
+        # 2. Transcribe with Whisper Small with contextual prompt & VAD
         asr_m = get_asr_model()
-        segments, _ = asr_m.transcribe(tmp_path, language="vi", beam_size=5)
+        initial_prompt = (
+            "Kiểm thử phần mềm, QA testing, ISTQB, Caching, Memory Leak, "
+            "Concurrent Requests, WebSocket Connection, Deadlock, "
+            "SQL Injection, Cross-Site Scripting, Authentication, Authorization."
+        )
+        segments, _ = asr_m.transcribe(
+            active_audio_path,
+            language="vi",
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=400),
+            initial_prompt=initial_prompt
+        )
         raw_asr = " ".join([seg.text for seg in segments]).strip()
         dt_asr = (time.time() - t0) * 1000.0
+
+        # 3. Audio-Text Contrastive FAISS Retrieval
+        c_preds = None
+        try:
+            c_engine = get_contrastive_engine()
+            if c_engine is not None:
+                c_res = c_engine.predict_from_audio(active_audio_path, k=5)
+                if c_res:
+                    c_preds = {
+                        "top_all": c_res["top_candidates_all"],
+                        "top_unseen": c_res["top_candidates_unseen"]
+                    }
+        except Exception as e_c:
+            print(f"Contrastive prediction note: {e_c}")
 
         if engine == "neural":
             corrector = get_neural_corrector()
@@ -206,14 +276,15 @@ async def process_audio_endpoint(file: UploadFile = File(...), engine: str = For
                     }
                 ],
                 "predicted_terms": [],
+                "contrastive_retrieval": c_preds,
                 "asr_latency_ms": round(dt_asr, 1),
                 "liem_latency_ms": round(dt_n, 1),
                 "total_latency_ms": round(dt_asr + dt_n, 1)
             }
 
-        # 2. LiemWhisper ranking
+        # 4. LiemWhisper ranking (Method P)
         t0_p = time.time()
-        res = system_p.process_utterance(raw_asr, audio_path=tmp_path, return_timing=True)
+        res = system_p.process_utterance(raw_asr, audio_path=active_audio_path, return_timing=True)
         dt_p = (time.time() - t0_p) * 1000.0
 
         return {
@@ -222,14 +293,68 @@ async def process_audio_endpoint(file: UploadFile = File(...), engine: str = For
             "revised_transcript": res["revised_transcript"],
             "accepted_changes": res["accepted_changes"],
             "predicted_terms": [{"term": t.term, "category": t.category} for t in res["predicted_terms"]],
+            "contrastive_retrieval": c_preds,
             "asr_latency_ms": round(dt_asr, 1),
             "liem_latency_ms": round(dt_p, 1),
             "total_latency_ms": round(dt_asr + dt_p, 1)
         }
     finally:
-        if os.path.exists(tmp_path):
+        for p in [raw_tmp, clean_wav]:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+
+@app.post("/api/contrastive_search")
+async def contrastive_search_endpoint(
+    file: Optional[UploadFile] = File(None),
+    wav_rel_path: Optional[str] = Form(None)
+):
+    target_path = None
+    cleanup = False
+    if file and file.filename:
+        ext = os.path.splitext(file.filename)[1] or ".wav"
+        raw_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext).name
+        clean_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
+        content = await file.read()
+        with open(raw_tmp, "wb") as f:
+            f.write(content)
+        try:
+            normalize_audio_to_wav16k(raw_tmp, clean_tmp)
+            target_path = clean_tmp
+        except Exception:
+            target_path = raw_tmp
+        cleanup = True
+        if os.path.exists(raw_tmp) and raw_tmp != target_path:
+            os.remove(raw_tmp)
+    elif wav_rel_path:
+        full_p = os.path.join(DATA_DIR, wav_rel_path)
+        if os.path.exists(full_p):
+            target_path = full_p
+        elif os.path.exists(wav_rel_path):
+            target_path = wav_rel_path
+
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=400, detail="Không tìm thấy file âm thanh hợp lệ!")
+
+    try:
+        engine = get_contrastive_engine()
+        if engine is None:
+            raise HTTPException(status_code=500, detail="Mô hình Contrastive chưa được khởi tạo!")
+        res = engine.predict_from_audio(target_path, k=5)
+        return {
+            "status": "success",
+            "latency_ms": res["latency_ms"],
+            "top_candidates_all": res["top_candidates_all"],
+            "top_candidates_unseen": res["top_candidates_unseen"],
+            "unseen_terms": engine.test_terms
+        }
+    finally:
+        if cleanup and target_path and os.path.exists(target_path):
             try:
-                os.remove(tmp_path)
+                os.remove(target_path)
             except Exception:
                 pass
 
@@ -288,9 +413,9 @@ async def index_page():
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1e293b; }
-        .hero { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 2.5rem 0; margin-bottom: 2rem; border-radius: 0 0 24px 24px; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.3); }
+        .hero { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; padding: 2.2rem 0; margin-bottom: 2rem; border-radius: 0 0 24px 24px; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.3); }
         .card { border-radius: 16px; border: none; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05); }
-        .nav-pills .nav-link { border-radius: 12px; font-weight: 600; padding: 10px 20px; color: #64748b; }
+        .nav-pills .nav-link { border-radius: 12px; font-weight: 600; padding: 10px 18px; color: #64748b; }
         .nav-pills .nav-link.active { background-color: #2563eb; color: white; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
         .badge-cat { font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; font-weight: 600; }
         .cat-Testing-Techniques { background: #dbeafe; color: #1e40af; }
@@ -298,9 +423,10 @@ async def index_page():
         .cat-Testing-Levels-and-Types { background: #dcfce7; color: #166534; }
         .cat-Defect-Management { background: #fee2e2; color: #991b1b; }
         .cat-Quality-and-Metrics { background: #f3e8ff; color: #6b21a8; }
-        .transcript-box { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; min-height: 120px; font-size: 1.05rem; line-height: 1.6; }
-        .transcript-highlight { background-color: #fef08a; padding: 2px 6px; border-radius: 4px; font-weight: 600; border-bottom: 2px solid #ca8a04; }
+        .transcript-box { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; min-height: 90px; font-size: 1.05rem; line-height: 1.6; }
         .metric-pill { background: #f1f5f9; padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+        .sim-bar { height: 8px; border-radius: 4px; background: #e2e8f0; overflow: hidden; margin-top: 4px; }
+        .sim-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); }
     </style>
 </head>
 <body>
@@ -310,10 +436,10 @@ async def index_page():
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
             <div>
                 <h1 class="fw-bold mb-1"><i class="fa-solid fa-microphone-lines me-2"></i>LiemWhisper Interactive Studio</h1>
-                <p class="mb-0 text-blue-100 fs-6">Hệ thống nhận dạng tiếng nói trộn mã Tiếng Việt - Tiếng Anh (ISTQB Software Testing) với cơ chế kiểm chứng âm học và cổng quyết định an toàn</p>
+                <p class="mb-0 text-blue-100 fs-6">Hệ thống nhận dạng tiếng nói trộn mã Tiếng Việt - Tiếng Anh (ISTQB Software Testing) với cơ chế Contrastive Audio-Text và FAISS Retrieval</p>
             </div>
             <div>
-                <span class="badge bg-light text-primary fs-6 px-3 py-2 rounded-pill"><i class="fa-solid fa-award me-1"></i>Scopus / SCIE Q3 Target</span>
+                <span class="badge bg-light text-primary fs-6 px-3 py-2 rounded-pill"><i class="fa-solid fa-award me-1"></i>Open-Vocabulary Zero-Shot</span>
             </div>
         </div>
     </div>
@@ -323,13 +449,16 @@ async def index_page():
     <!-- Navigation Tabs -->
     <ul class="nav nav-pills mb-4 justify-content-center gap-2" id="demoTab" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="text-tab" data-bs-toggle="pill" data-bs-target="#text-mode" type="button" role="tab"><i class="fa-solid fa-keyboard me-2"></i>1. Thử nghiệm Văn bản ASR</button>
+            <button class="nav-link active" id="text-tab" data-bs-toggle="pill" data-bs-target="#text-mode" type="button" role="tab"><i class="fa-solid fa-keyboard me-2"></i>1. Văn bản ASR</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="audio-tab" data-bs-toggle="pill" data-bs-target="#audio-mode" type="button" role="tab"><i class="fa-solid fa-microphone me-2"></i>2. Nói Trực Tiếp qua Micro / Upload Audio</button>
+            <button class="nav-link" id="audio-tab" data-bs-toggle="pill" data-bs-target="#audio-mode" type="button" role="tab"><i class="fa-solid fa-microphone me-2"></i>2. Giọng nói Micro / File Audio</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="samples-tab" data-bs-toggle="pill" data-bs-target="#samples-mode" type="button" role="tab"><i class="fa-solid fa-database me-2"></i>3. Khám phá Test Set (245 mẫu)</button>
+            <button class="nav-link" id="contrastive-tab" data-bs-toggle="pill" data-bs-target="#contrastive-mode" type="button" role="tab"><i class="fa-solid fa-brain me-2"></i>3. Thuật ngữ Mới (FAISS Vector Search)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="samples-tab" data-bs-toggle="pill" data-bs-target="#samples-mode" type="button" role="tab"><i class="fa-solid fa-database me-2"></i>4. Test Set (245 mẫu)</button>
         </li>
     </ul>
 
@@ -347,10 +476,8 @@ async def index_page():
                         <div class="mb-3">
                             <label class="form-label small fw-bold text-muted">Cơ chế Hiệu chỉnh (Correction Engine):</label>
                             <select id="engineSelect" class="form-select form-select-sm">
-                                <option value="proposal" selected>🎯 Method P: Entity-Grounded Ranking (Khuyên dùng - Giữ nguyên 100% tiếng Việt)</option>
-                                <option value="neural">🧠 Option 2: Pure Neural Seq2Seq (T5-LoRA Thử nghiệm không từ điển)</option>
+                                <option value="proposal" selected>🎯 Method P: Entity-Grounded Ranking (ISTQB Closed Pool)</option>
                             </select>
-                            <div class="form-text small text-muted">💡 <b>Method P</b> là giải pháp đề xuất của đồ án: giữ nguyên tiếng Việt chuẩn của Whisper, chỉ dò tìm và sửa đúng vị trí phát âm bồi thuật ngữ.</div>
                         </div>
 
                         <div class="mb-3">
@@ -358,8 +485,7 @@ async def index_page():
                             <div class="d-flex flex-column gap-2">
                                 <button class="btn btn-sm btn-outline-secondary text-start" onclick="setSample('kỹ thuật baodari value analixit kết hợp với description table tempting')">🔹 baodari value analixit ... description table tempting</button>
                                 <button class="btn btn-sm btn-outline-secondary text-start" onclick="setSample('hôm nay tui chạy test cây với n hoạch tét tinh để tìm bớt rì pọt')">🔹 test cây ... n hoạch tét tinh ... bớt rì pọt</button>
-                                <button class="btn btn-sm btn-outline-secondary text-start" onclick="setSample('bản bíu này cần chạy small testing và sennity testing ngay lập tức')">🔹 bản bíu ... small testing ... sennity testing</button>
-                                <button class="btn btn-sm btn-outline-secondary text-start" onclick="setSample('mô hình v model yêu cầu theo dõi traceability matrix 2 chiều')">🔹 v model ... traceability matrix 2 chiều</button>
+                                <button class="btn btn-sm btn-outline-secondary text-start" onclick="setSample('xác minh cơ chế authentication authorization và ngăn chặn privilege escalation')">🔹 authentication authorization ... privilege escalation</button>
                             </div>
                         </div>
 
@@ -371,63 +497,49 @@ async def index_page():
                     <div class="card p-4 h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold mb-0"><i class="fa-solid fa-square-check text-success me-2"></i>Kết quả Hiệu chỉnh</h5>
-                            <span id="textLatency" class="metric-pill"><i class="fa-regular fa-clock"></i> 0.0 ms</span>
+                            <span id="textLatency" class="metric-pill"><i class="fa-regular fa-clock"></i> 0 ms</span>
                         </div>
 
-                        <label class="form-label small fw-bold text-muted">Bản phiên âm đã hiệu chỉnh (Revised Transcript):</label>
-                        <div id="textOutput" class="transcript-box mb-3 text-secondary">
-                            (Bấm "Chạy LiemWhisper" để xem kết quả)
+                        <label class="form-label small fw-bold text-muted">Văn bản sau hiệu chỉnh (Revised Transcript):</label>
+                        <div id="textOutput" class="transcript-box mb-4 text-primary fw-semibold">
+                            (Kết quả sẽ hiển thị ở đây)
                         </div>
 
-                        <h6 class="fw-bold mb-2">Thuật ngữ & Hành động sửa đổi:</h6>
+                        <h6 class="fw-bold mb-2">Chi tiết các thực thể thuật ngữ được phát hiện:</h6>
                         <div id="changesTableContainer" class="table-responsive">
-                            <p class="text-muted small">Chưa có dữ liệu xử lý.</p>
+                            <p class="text-muted small">Chưa có thay đổi nào.</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- TAB 2: LIVE MIC & AUDIO UPLOAD -->
+        <!-- TAB 2: AUDIO / MICROPHONE TEST -->
         <div class="tab-pane fade" id="audio-mode" role="tabpanel">
             <div class="row g-4">
                 <div class="col-lg-5">
                     <div class="card p-4 h-100">
-                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-microphone text-danger me-2"></i>Nói trực tiếp qua Microphone</h5>
-                        <p class="text-muted small">Bấm nút bên dưới, nói một câu vào micro (bằng tiếng Việt có kèm thuật ngữ ISTQB tiếng Anh hoặc phát âm bồi). Sau khi nói xong, bấm <b>Dừng</b> để hệ thống tự động nhận dạng ra text.</p>
-                        
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted">Cơ chế Hiệu chỉnh (Engine):</label>
-                            <select id="engineAudioSelect" class="form-select form-select-sm">
-                                <option value="proposal" selected>🎯 Method P: Entity-Grounded Ranking (Khuyên dùng - Giữ nguyên 100% tiếng Việt)</option>
-                                <option value="neural">🧠 Option 2: Pure Neural Seq2Seq (T5-LoRA Thử nghiệm không từ điển)</option>
-                            </select>
+                        <h5 class="fw-bold mb-3"><i class="fa-solid fa-microphone-lines text-primary me-2"></i>Thu âm trực tiếp / Tải file</h5>
+                        <p class="text-muted small">Nói tiếng Việt có chèn thuật ngữ tiếng Anh qua micro (hệ thống tự động chuẩn hóa 16kHz PCM & khử nhiễu) hoặc tải lên file âm thanh.</p>
+
+                        <div class="d-grid gap-2 mb-3">
+                            <button id="btnRecord" class="btn btn-danger py-3 fw-bold fs-6 shadow-sm" onclick="toggleRecording()"><i class="fa-solid fa-microphone me-2"></i>Bấm vào đây để BẮT ĐẦU NÓI</button>
                         </div>
 
-                        <!-- LIVE MIC BUTTON -->
-                        <button id="btnRecord" class="btn btn-danger btn-lg w-100 py-3 mb-3 fw-bold rounded-pill shadow" onclick="toggleRecording()">
-                            <i class="fa-solid fa-microphone me-2"></i>Bấm vào đây để BẮT ĐẦU NÓI
-                        </button>
-
-                        <!-- RECORDING STATUS -->
-                        <div id="recordStatus" class="d-none text-center mb-3 p-3 bg-danger-subtle rounded-3 border border-danger-subtle">
-                            <div class="spinner-grow spinner-grow-sm text-danger me-2" role="status"></div>
-                            <span class="fw-bold text-danger fs-4 align-middle" id="recordTimer">00:00</span>
-                            <p class="small text-danger fw-semibold mt-2 mb-0">🔴 Đang lắng nghe giọng bạn... Nói xong bấm nút để dừng!</p>
+                        <div id="recordStatus" class="alert alert-warning py-2 small d-none d-flex align-items-center justify-content-between">
+                            <span><i class="fa-solid fa-circle-dot text-danger fa-fade me-2"></i>Đang thu âm... Hãy nói tự nhiên</span>
+                            <span id="recordTimer" class="fw-bold font-monospace">00:00</span>
                         </div>
 
                         <div id="audioPreviewContainer" class="mb-3 d-none">
-                            <label class="form-label small fw-bold text-muted">Nghe lại giọng nói vừa thu:</label>
-                            <audio id="audioPreview" controls class="w-100 rounded"></audio>
+                            <label class="form-label small fw-bold text-muted">Audio vừa ghi / tải:</label>
+                            <audio id="audioPreview" controls class="w-100"></audio>
                         </div>
 
-                        <!-- OR FILE UPLOAD -->
-                        <div class="position-relative text-center my-3">
-                            <hr class="my-0">
-                            <span class="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted small fw-semibold">HOẶC CHỌN FILE ÂM THANH</span>
-                        </div>
+                        <hr class="my-3">
 
-                        <div class="mt-3">
+                        <label class="form-label small fw-bold text-muted">Hoặc chọn file âm thanh từ máy (.wav, .mp3, .m4a, .webm):</label>
+                        <div class="mt-1">
                             <input type="file" id="audioFile" class="form-control mb-2" accept=".wav,.m4a,.mp3,.webm">
                             <button id="btnProcessAudio" class="btn btn-outline-primary w-100 py-2 fw-semibold" onclick="processAudioFile()"><i class="fa-solid fa-upload me-2"></i>Nhận dạng từ File này</button>
                         </div>
@@ -455,15 +567,80 @@ async def index_page():
                         </div>
 
                         <h6 class="fw-bold mb-2">Chi tiết thuật ngữ nhận diện:</h6>
-                        <div id="audioChangesContainer" class="table-responsive">
+                        <div id="audioChangesContainer" class="table-responsive mb-3">
                             <p class="text-muted small">Chưa có thay đổi nào.</p>
+                        </div>
+
+                        <!-- Contrastive FAISS Retrieval box for Audio -->
+                        <div id="audioContrastiveBox" class="border rounded p-3 bg-light d-none">
+                            <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-brain text-primary me-2"></i>Truy xuất Vector Đa phương thức (Open-Vocabulary FAISS):</h6>
+                            <div id="audioContrastiveList"></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- TAB 3: SAMPLES EXPLORER -->
+        <!-- TAB 3: OPEN-VOCABULARY CONTRASTIVE FAISS RETRIEVAL -->
+        <div class="tab-pane fade" id="contrastive-mode" role="tabpanel">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <div class="card p-4 h-100">
+                        <h5 class="fw-bold mb-2"><i class="fa-solid fa-cube text-primary me-2"></i>Nhận diện Thuật ngữ Mới (Unseen Terms)</h5>
+                        <p class="text-muted small">
+                            Không sử dụng từ điển cố định. Mô hình dùng <b>Audio-Text Contrastive Learning</b> chiếu vector âm thanh Whisper và vector văn bản vào cùng không gian <b>d=256</b>, sau đó dùng <b>FAISS</b> tìm Top-K thuật ngữ gần nhất theo Cosine Similarity.
+                        </p>
+
+                        <div class="alert alert-info py-2 small mb-3">
+                            <b>6 Thuật ngữ Unseen (Không có trong tập Huấn luyện):</b><br>
+                            <code>Load Testing</code>, <code>Stress Testing</code>, <code>Code Coverage</code>, <code>Statement Coverage</code>, <code>Bug Report</code>, <code>Equivalence Partitioning</code>
+                        </div>
+
+                        <label class="form-label small fw-bold text-muted">Chọn mẫu Audio Unseen có sẵn để test nhanh:</label>
+                        <div class="d-flex flex-column gap-2 mb-3">
+                            <button class="btn btn-sm btn-outline-dark text-start" onclick="testContrastiveSample('wav_16k/SE171761_Cau14_745d8760.wav', 'Load Testing / Stress Testing')">
+                                📌 <b>Câu 14 (SE171761):</b> Chứa <i>Load Testing</i> & <i>Stress Testing</i> (Unseen)
+                            </button>
+                            <button class="btn btn-sm btn-outline-dark text-start" onclick="testContrastiveSample('wav_16k/P_01FD37_Cau15_a96cbd80.wav', 'Code Coverage / Statement Coverage')">
+                                📌 <b>Câu 15 (P_01FD37):</b> Chứa <i>Code Coverage</i> & <i>Statement Coverage</i> (Unseen)
+                            </button>
+                            <button class="btn btn-sm btn-outline-dark text-start" onclick="testContrastiveSample('wav_16k/P_0FD5BF_Cau10_e15aa657.wav', 'Bug Report')">
+                                📌 <b>Câu 10 (P_0FD5BF):</b> Chứa <i>Bug Report</i> (Unseen)
+                            </button>
+                        </div>
+
+                        <hr>
+                        <label class="form-label small fw-bold text-muted">Hoặc tải file âm thanh bất kỳ để truy xuất vector:</label>
+                        <input type="file" id="contrastiveFile" class="form-control mb-2" accept=".wav,.mp3,.m4a">
+                        <button id="btnRunContrastive" class="btn btn-success w-100 py-2 fw-semibold" onclick="processContrastiveUpload()">
+                            <i class="fa-solid fa-magnifying-glass me-2"></i>Truy xuất Vector FAISS
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-lg-7">
+                    <div class="card p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold mb-0"><i class="fa-solid fa-list-ol text-primary me-2"></i>Top 5 Thuật ngữ Truy xuất từ FAISS</h5>
+                            <span id="contrastiveLatency" class="metric-pill"><i class="fa-regular fa-clock"></i> 0 ms</span>
+                        </div>
+
+                        <div id="contrastiveAudioPlayer" class="mb-3 d-none">
+                            <audio id="cAudioPreview" controls class="w-100"></audio>
+                        </div>
+
+                        <div id="contrastiveResultsContainer">
+                            <div class="text-center py-5 text-muted">
+                                <i class="fa-solid fa-atom fa-3x mb-3 text-secondary opacity-50"></i>
+                                <p>Bấm chọn một mẫu Unseen bên trái hoặc tải file lên để xem kết quả truy xuất vector.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: SAMPLES EXPLORER -->
         <div class="tab-pane fade" id="samples-mode" role="tabpanel">
             <div class="card p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -526,7 +703,6 @@ async def index_page():
             document.getElementById('textLatency').innerHTML = `<i class="fa-regular fa-clock"></i> ${data.latency_ms} ms`;
             document.getElementById('textOutput').innerText = data.revised_transcript;
 
-            // Render changes table
             const changes = data.accepted_changes || [];
             if (changes.length === 0) {
                 document.getElementById('changesTableContainer').innerHTML = `
@@ -589,7 +765,6 @@ async def index_page():
                     preview.src = audioUrl;
                     document.getElementById('audioPreviewContainer').classList.remove('d-none');
 
-                    // Automatically transcribe and rank the recorded audio
                     await uploadAndProcessBlob(audioBlob, 'mic_recording.webm');
                 };
 
@@ -623,7 +798,6 @@ async def index_page():
         }
     }
 
-    // Audio preview handler for file input
     document.getElementById('audioFile').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (file) {
@@ -648,13 +822,13 @@ async def index_page():
         btnRecord.disabled = true;
         btnFile.disabled = true;
 
-        document.getElementById('rawAsrOutput').innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted small">Đang chạy Whisper Small nhận dạng âm thanh...</p></div>';
+        document.getElementById('rawAsrOutput').innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted small">Đang chạy Whisper Small (VAD + 16kHz resample)...</p></div>';
         document.getElementById('revisedAudioOutput').innerHTML = '<div class="text-muted small">Đang xếp hạng ứng viên LiemWhisper...</div>';
+        document.getElementById('audioContrastiveBox').classList.add('d-none');
 
         const formData = new FormData();
         formData.append('file', blob, filename);
-        const engine = document.getElementById('engineAudioSelect') ? document.getElementById('engineAudioSelect').value : 'proposal';
-        formData.append('engine', engine);
+        formData.append('engine', 'proposal');
 
         try {
             const res = await fetch('/api/process_audio', {
@@ -695,6 +869,21 @@ async def index_page():
                     </table>
                 `;
             }
+
+            // Show Contrastive FAISS predictions
+            if (data.contrastive_retrieval && data.contrastive_retrieval.top_unseen) {
+                const box = document.getElementById('audioContrastiveBox');
+                const list = document.getElementById('audioContrastiveList');
+                box.classList.remove('d-none');
+                
+                let cRows = data.contrastive_retrieval.top_unseen.map(item => `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-semibold text-dark">${item.rank}. ${item.term}</span>
+                        <span class="badge ${item.similarity > 0.5 ? 'bg-success' : 'bg-secondary'}">${item.similarity.toFixed(4)}</span>
+                    </div>
+                `).join('');
+                list.innerHTML = cRows;
+            }
         } catch (e) {
             alert("Lỗi khi xử lý âm thanh: " + e.message);
         } finally {
@@ -703,7 +892,122 @@ async def index_page():
         }
     }
 
-    // Load samples on Tab 3 click
+    // TAB 3: CONTRASTIVE FAISS SEARCH
+    async function testContrastiveSample(relPath, label) {
+        const preview = document.getElementById('cAudioPreview');
+        preview.src = '/audio/' + relPath.replace('wav_16k/', '');
+        document.getElementById('contrastiveAudioPlayer').classList.remove('d-none');
+
+        const formData = new FormData();
+        formData.append('wav_rel_path', relPath);
+        await runContrastiveFetch(formData);
+    }
+
+    async function processContrastiveUpload() {
+        const fileInput = document.getElementById('contrastiveFile');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert("Vui lòng chọn file âm thanh!");
+            return;
+        }
+        const file = fileInput.files[0];
+        const preview = document.getElementById('cAudioPreview');
+        preview.src = URL.createObjectURL(file);
+        document.getElementById('contrastiveAudioPlayer').classList.remove('d-none');
+
+        const formData = new FormData();
+        formData.append('file', file, file.name);
+        await runContrastiveFetch(formData);
+    }
+
+    async function runContrastiveFetch(formData) {
+        const container = document.getElementById('contrastiveResultsContainer');
+        container.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 text-muted small">Đang trích xuất Whisper Encoder & truy xuất FAISS Index...</p>
+            </div>
+        `;
+
+        try {
+            const res = await fetch('/api/contrastive_search', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            document.getElementById('contrastiveLatency').innerHTML = `<i class="fa-regular fa-clock"></i> ${data.latency_ms} ms`;
+
+            const unseenTerms = new Set(data.unseen_terms || []);
+            const topAll = data.top_candidates_all || [];
+            const topUnseen = data.top_candidates_unseen || [];
+
+            let html = `
+                <div class="mb-4">
+                    <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-unlock-keyhole me-2"></i>Bảng 1: Truy xuất trong nhóm Unseen Terms (6 thuật ngữ không có trong Train):</h6>
+                    <div class="list-group mb-3">
+            `;
+
+            topUnseen.forEach(item => {
+                const sim = item.similarity;
+                const pct = Math.max(0, Math.min(100, Math.round((sim + 1) * 50)));
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-primary me-2">#${item.rank}</span>
+                                <strong class="fs-6">${item.term}</strong>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle ms-2">UNSEEN TEST</span>
+                            </div>
+                            <span class="fw-bold ${sim > 0.5 ? 'text-success' : 'text-muted'}">${sim.toFixed(4)}</span>
+                        </div>
+                        <div class="sim-bar">
+                            <div class="sim-bar-fill" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+
+                <div>
+                    <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-globe me-2"></i>Bảng 2: Truy xuất trên Toàn bộ 24 thuật ngữ (Toàn bộ không gian FAISS):</h6>
+                    <div class="list-group">
+            `;
+
+            topAll.forEach(item => {
+                const isUnseen = unseenTerms.has(item.term);
+                const sim = item.similarity;
+                const pct = Math.max(0, Math.min(100, Math.round((sim + 1) * 50)));
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-secondary me-2">#${item.rank}</span>
+                                <span class="fw-semibold">${item.term}</span>
+                                ${isUnseen ? '<span class="badge bg-success-subtle text-success border border-success-subtle ms-2">UNSEEN</span>' : '<span class="badge bg-light text-muted border ms-2">Train</span>'}
+                            </div>
+                            <span class="fw-bold ${sim > 0.5 ? 'text-success' : 'text-muted'}">${sim.toFixed(4)}</span>
+                        </div>
+                        <div class="sim-bar">
+                            <div class="sim-bar-fill" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (e) {
+            container.innerHTML = `<div class="alert alert-danger">Lỗi truy xuất: ${e.message}</div>`;
+        }
+    }
+
+    // Load samples on Tab 4 click
     let samplesLoaded = false;
     document.getElementById('samples-tab').addEventListener('click', async function() {
         if (samplesLoaded) return;
