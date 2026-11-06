@@ -61,6 +61,7 @@ import uvicorn
 from baselines import TaxonomyManager
 from candidate_ranking import ProposedSystemP, AcousticTeacherForcingScorer
 from neural_corrector import NeuralErrorCorrector
+from retro_page import get_retro_html
 
 neural_corrector_instance = None
 def get_neural_corrector():
@@ -163,6 +164,10 @@ app = FastAPI(title="LiemWhisper Interactive Studio")
 if os.path.exists(WAV_DIR):
     app.mount("/audio", StaticFiles(directory=WAV_DIR), name="audio")
 
+USER_RECORDINGS_DIR = r"C:\Users\ACER\Documents\Sound Recordings"
+if os.path.exists(USER_RECORDINGS_DIR):
+    app.mount("/user_audio", StaticFiles(directory=USER_RECORDINGS_DIR), name="user_audio")
+
 
 class TextRequest(BaseModel):
     text: str
@@ -197,7 +202,10 @@ async def process_text_endpoint(req: TextRequest):
     dt = (time.time() - t0) * 1000.0
     return {
         "engine": "proposal",
+        "raw_asr": req.text,
+        "raw_asr_transcript": req.text,
         "original_transcript": req.text,
+        "revised_text": res["revised_transcript"],
         "revised_transcript": res["revised_transcript"],
         "accepted_changes": res["accepted_changes"],
         "predicted_terms": [{"term": t.term, "category": t.category} for t in res["predicted_terms"]],
@@ -236,8 +244,7 @@ async def process_audio_endpoint(file: UploadFile = File(...), engine: str = For
             active_audio_path,
             language="vi",
             beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=400),
+            vad_filter=False,
             initial_prompt=initial_prompt
         )
         raw_asr = " ".join([seg.text for seg in segments]).strip()
@@ -289,11 +296,14 @@ async def process_audio_endpoint(file: UploadFile = File(...), engine: str = For
 
         return {
             "engine": "proposal",
+            "raw_asr": raw_asr,
             "raw_asr_transcript": raw_asr,
+            "revised_text": res["revised_transcript"],
             "revised_transcript": res["revised_transcript"],
             "accepted_changes": res["accepted_changes"],
             "predicted_terms": [{"term": t.term, "category": t.category} for t in res["predicted_terms"]],
             "contrastive_retrieval": c_preds,
+            "latency_ms": round(dt_asr + dt_p, 1),
             "asr_latency_ms": round(dt_asr, 1),
             "liem_latency_ms": round(dt_p, 1),
             "total_latency_ms": round(dt_asr + dt_p, 1)
@@ -403,6 +413,16 @@ async def get_test_samples():
 
 @app.get("/", response_class=HTMLResponse)
 async def index_page():
+    return HTMLResponse(content=get_retro_html())
+
+
+@app.get("/retro", response_class=HTMLResponse)
+async def retro_page():
+    return HTMLResponse(content=get_retro_html())
+
+
+@app.get("/modern", response_class=HTMLResponse)
+async def modern_page():
     html = """<!DOCTYPE html>
 <html lang="vi">
 <head>
