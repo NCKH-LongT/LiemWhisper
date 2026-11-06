@@ -1,0 +1,181 @@
+{
+  "status": "reproducibility package prepared",
+  "environment": {
+    "os": "Windows-10-10.0.26300-SP0",
+    "python_version": "3.10.20",
+    "pytorch_version": "2.14.1+cpu",
+    "transformers_version": "5.20.2",
+    "faiss_version": "1.15.1",
+    "cuda_available": false,
+    "cuda_device": "None (CPU inference)",
+    "random_seed": 42,
+    "torch_deterministic_flag": true
+  },
+  "model_hyperparameters": {
+    "audio_encoder": "openai/whisper-tiny (frozen, d=384)",
+    "audio_pooling": "Mean over sequence frames [T, 384] -> [384]",
+    "audio_projection_head": "Linear(384 -> 256)",
+    "text_encoder": "google-t5/t5-small (frozen encoder, d=512)",
+    "text_pooling": "Mean over token sequence [S, 512] -> [512]",
+    "text_projection_head": "Linear(512 -> 256)",
+    "normalization": "L2 unit-sphere normalization (dim=256)",
+    "loss_function": "Supervised Audio-to-Text Prototype Classification Loss (tau=0.07)",
+    "optimizer": "AdamW (lr=1e-4, weight_decay=1e-2)",
+    "batch_size": 32,
+    "epochs": 30
+  },
+  "faiss_index_specification": {
+    "index_type": "IndexFlatIP",
+    "metric": "METRIC_INNER_PRODUCT (Cosine Similarity on L2-normalized vectors)",
+    "dimension": 256,
+    "vocabulary_size": 24,
+    "alphabetical_order": [
+      "Boundary Value Analysis",
+      "Bug Report",
+      "Code Coverage",
+      "Confirmation Testing",
+      "Decision Table Testing",
+      "Defect Life Cycle",
+      "Equivalence Partitioning",
+      "Functional Testing",
+      "Integration Testing",
+      "Load Testing",
+      "Non Functional Testing",
+      "Priority",
+      "Regression Testing",
+      "Requirement Traceability Matrix",
+      "Sanity Testing",
+      "Severity",
+      "Smoke Testing",
+      "Statement Coverage",
+      "Stress Testing",
+      "System Testing",
+      "Test Case",
+      "Test Plan",
+      "Test Suite",
+      "Unit Testing"
+    ],
+    "unseen_terms_6": [
+      "Bug Report",
+      "Code Coverage",
+      "Equivalence Partitioning",
+      "Load Testing",
+      "Statement Coverage",
+      "Stress Testing"
+    ],
+    "train_terms_18": [
+      "Boundary Value Analysis",
+      "Confirmation Testing",
+      "Decision Table Testing",
+      "Defect Life Cycle",
+      "Functional Testing",
+      "Integration Testing",
+      "Non Functional Testing",
+      "Priority",
+      "Regression Testing",
+      "Requirement Traceability Matrix",
+      "Sanity Testing",
+      "Severity",
+      "Smoke Testing",
+      "System Testing",
+      "Test Case",
+      "Test Plan",
+      "Test Suite",
+      "Unit Testing"
+    ]
+  },
+  "source_scripts_integrity": {
+    "open_vocab_contrastive_py": {
+      "path": "Liem/LiemWhisper/research/src/liemwhisper/open_vocab_contrastive.py",
+      "sha256": "1fc94189af0693eadb4c2dbb4e0b99a277fb252f12864e8b7f4479b21314b10f",
+      "size_bytes": 6816
+    },
+    "train_contrastive_matcher_py": {
+      "path": "Liem/LiemWhisper/research/src/liemwhisper/train_contrastive_matcher.py",
+      "sha256": "01cac3441f62a9e6e878ab35b1a065b8cc45f4ddbcd9ae87c306e4944649bb4c",
+      "size_bytes": 4605
+    },
+    "evaluate_unseen_retrieval_py": {
+      "path": "Liem/LiemWhisper/research/src/liemwhisper/evaluate_unseen_retrieval.py",
+      "sha256": "d9f17b9cedcbad642fe5e3a008507f507c9688c0c6ecd6a0840667d04a52cbdc",
+      "size_bytes": 7845
+    },
+    "web_demo_py": {
+      "path": "Liem/LiemWhisper/research/src/liemwhisper/web_demo.py",
+      "sha256": "2f8d0fd5025a5bb93eb8fa7e5523751a38dcc251d240c576388bbf5c2d452a47",
+      "size_bytes": 52655
+    },
+    "audit_e1_deep_review_py": {
+      "path": "scratch/audit_e1_deep_review.py",
+      "sha256": "2552ba12bda41b0dd29a0af825d8aa54026fd48d8a5e6a7bd3abb6abea81db17",
+      "size_bytes": 19458
+    },
+    "run_rigorous_tests_py": {
+      "path": "scratch/run_rigorous_tests.py",
+      "sha256": "b56ea2104f44bdf2f81aba9d842aa57d932f122a8aafd5569bcb21e05be13be5",
+      "size_bytes": 3251
+    },
+    "run_prompt_only_baseline_py": {
+      "path": "scratch/run_prompt_only_baseline.py",
+      "sha256": "4255c8270e5e200a8bce59e0ec93645bcae85d7f3950e6247c7542b76cfc25c5",
+      "size_bytes": 3632
+    }
+  },
+  "data_artifacts_integrity": {
+    "checkpoint_e0": {
+      "path": "Data/models/contrastive_open_vocab/best_contrastive_model.pt",
+      "sha256": "5b38a183d539b7009bdb32f93b80ca7f83ca7c133ecebebea90e644ab7a896d6",
+      "size_bytes": 2903577
+    },
+    "checkpoint_e1b": {
+      "path": "Data/models/e1b_span_model.pt",
+      "sha256": "51231848fec10084cec17e1819aef876910a17961de9a776ed416a37e0fb7511",
+      "size_bytes": 2903485
+    },
+    "gold_dataset_508": {
+      "path": "Data/gold_with_asr_v1.csv",
+      "sha256": "5e7a27774bdf0a1e7bd7ca5bd746318579426e0d59fae6686105c097e5ae66a2",
+      "size_bytes": 1644214
+    },
+    "training_spans_300": {
+      "path": "Data/training_spans_300.csv",
+      "sha256": "b86a3ad1ae2ca9da6c5e3c932346c962f97b0c0281dba0e530c016527d1dd7cb",
+      "size_bytes": 27971
+    },
+    "span_alignment_gold": {
+      "path": "Data/span_alignment_gold.csv",
+      "sha256": "26d03945cd522eb88f3726c4e01d94e432746f5ba3ecc889a547e046d32735e1",
+      "size_bytes": 9291
+    },
+    "test_30_detailed_eval": {
+      "path": "Data/models/test_30_detailed_eval.csv",
+      "sha256": "42d8b41d7034391857422fd8ebbfe789157199e672ccd1f0a0c66930da6d3cd6",
+      "size_bytes": 13918
+    },
+    "unseen_predictions_508": {
+      "path": "Data/benchmark_results/unseen_predictions_508.csv",
+      "sha256": "46334f53cabe134d360d62c118a39a7fd3e1360d0467b19c7bcfc443126a92ea",
+      "size_bytes": 212606
+    },
+    "terms_meta": {
+      "path": "Data/features_contrastive/terms_meta.json",
+      "sha256": "6980d5657f2de9feb9d7a4b96b0c786680ff53e5ef68ac4b557a159d058b8cfa",
+      "size_bytes": 1968
+    },
+    "term_text_embs": {
+      "path": "Data/features_contrastive/term_text_embs.npy",
+      "sha256": "f722e19c0c21144940cfd1af6dae00bfde6168827f0443b541b8003af098df64",
+      "size_bytes": 49280
+    },
+    "test_audio_embs": {
+      "path": "Data/features_contrastive/test_audio_embs.npy",
+      "sha256": "43870598ef2e97c1d209b5f0dc7cd81f26accffba5000bb7e1a1b3d0ec2842c4",
+      "size_bytes": 212096
+    },
+    "test_targets": {
+      "path": "Data/features_contrastive/test_targets.npy",
+      "sha256": "f03cdc383ed3b860d84ca0da6e60b19839f86a83a9fa2e0eaa52a2bd70b3c541",
+      "size_bytes": 1232
+    }
+  }
+}
