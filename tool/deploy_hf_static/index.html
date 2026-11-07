@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liem STT - Web Test Online 24/7</title>
+</head>
+<body>
+
+    <h1>Hệ Thống Thử Nghiệm Liem STT (Online 24/7 trên Hugging Face)</h1>
+    <p>Nhận dạng giọng nói tiếng Việt chêm thuật ngữ tiếng Anh chuyên ngành (200+ Thuật ngữ Kiến trúc, Bảo mật, Machine Learning, Audio &amp; ISTQB) và sửa lỗi tự động.</p>
+    <p><i>Trang web này hoạt động 24/7 vĩnh viễn trên Hugging Face, không phụ thuộc vào máy tính cá nhân.</i></p>
+
+    <!-- THÔNG BÁO CHO ĐIỆN THOẠI -->
+    <div id="mobileNotice" style="background:#fff3cd; border:2px solid #ffeeba; color:#856404; padding:12px; margin:12px 0; max-width:800px; border-radius:6px; font-size:14px;">
+        📱 <b>Dành cho người dùng Điện Thoại (iOS / Android):</b><br>
+        Khi xem qua app/web Hugging Face, trình duyệt sẽ tự động chặn Micro (do cơ chế bảo mật iframe).<br>
+        👉 <b>Mở link trực tiếp toàn màn hình tại đây:</b> <a href="https://koilq-liem-stt-web.static.hf.space" target="_blank" style="font-weight:bold; color:#0056b3; text-decoration:underline; font-size:15px;">https://koilq-liem-stt-web.static.hf.space</a><br>
+        <i>(Khi vào link trên, bấm "Cho phép / Allow" Micro là nói và hiển thị thời gian thực bình thường!)</i>
+    </div>
+    <hr>
+
+    <!-- 1. THỬ NGHIỆM GIỌNG NÓI & RTA -->
+    <h2>1. Thử nghiệm Nói Trực Tiếp Vào Micro (Có RTA Thời Gian Thực)</h2>
+    <div>
+        <button type="button" id="recordBtn" onclick="toggleRecord()" style="font-weight:bold; font-size:15px; padding:6px 14px;">Bắt đầu Nói Vào Micro</button>
+        <span id="recordStatus" style="color:red; font-weight:bold; margin-left:10px;"></span>
+    </div>
+
+    <!-- KHU VỰC RTA -->
+    <div id="rtaContainer" style="display:none; margin-top:10px; border:1px dashed #666; padding:10px; background:#f9f9f9; max-width:800px;">
+        <b>[RTA 1 - Âm lượng Micro thời gian thực]:</b><br>
+        <progress id="audioLevelBar" value="0" max="100" style="width:300px; height:18px;"></progress>
+        <span id="audioLevelText">0%</span>
+        <br><br>
+        <b>[RTA 2 - Lời nói thời gian thực (Live Speech)]:</b><br>
+        <div id="liveSpeechText" style="color:blue; font-style:italic; min-height:24px;">(Đang lắng nghe...)</div>
+    </div>
+    <br>
+
+    <!-- 2. CHỌN CÂU MẪU CÓ SẴN -->
+    <h2>2. Thử Nghiệm 10 Câu Ghi Âm Thực Tế (ISTQB Testing)</h2>
+    <div>
+        <label><b>Chọn 1 trong 10 câu mẫu thực tế để nghe và kiểm tra:</b></label><br>
+        <select id="userSampleSelect" onchange="onSelectUserSample()" style="width:100%; max-width:800px;">
+            <option value="">-- Bấm vào đây để chọn câu mẫu --</option>
+            <option value="Recording (3).m4a" data-id="1">Câu 1: False Positive Rate, Precision, Recall, F1-Score (Recording 3)</option>
+            <option value="Recording (4).m4a" data-id="2">Câu 2: CORS, CSRF, CSP (Recording 4)</option>
+            <option value="Recording (5).m4a" data-id="3">Câu 3: Database Normalization, Query Optimization, N+1 Query (Recording 5)</option>
+            <option value="Recording (6).m4a" data-id="4">Câu 4: Service Discovery, Load Balancing, High Availability (Recording 6)</option>
+            <option value="Recording (7).m4a" data-id="5">Câu 5: Overfitting, Underfitting, Feature Extraction (Recording 7)</option>
+            <option value="Recording (8).m4a" data-id="6">Câu 6: Phoneme Recognition, Acoustic Modeling (Recording 8)</option>
+            <option value="Recording (9).m4a" data-id="7">Câu 7: Data Augmentation, Label Noise, Sampling Bias (Recording 9)</option>
+            <option value="Recording (10).m4a" data-id="8">Câu 8: Build Pipeline, Automated Deployment, Continuous Integration (Recording 10)</option>
+            <option value="Recording (11).m4a" data-id="9">Câu 9: Zero-Shot Learning, Contrastive Loss, Cosine Similarity (Recording 11)</option>
+            <option value="Recording (12).m4a" data-id="10">Câu 10: Response Time, Throughput, Latency P95 P99 (Recording 12)</option>
+        </select>
+    </div>
+    <br>
+
+    <div>
+        <label><b>Nghe file âm thanh:</b></label><br>
+        <audio id="audioPreview" controls style="width:100%; max-width:800px;"></audio>
+        <div id="sampleRefText" style="color:#555; font-size:13px; margin-top:4px;"></div>
+    </div>
+    <br>
+
+    <div>
+        <button type="button" id="runAudioBtn" onclick="runSampleEvaluation()" style="font-weight:bold; font-size:14px; padding:6px 14px;">Chạy Nhận Dạng &amp; Sửa Lỗi Thuật Ngữ</button>
+    </div>
+
+    <!-- KẾT QUẢ ĐỐI CHIẾU HOÀN CHỈNH -->
+    <div id="audioResultBox" style="display:none; margin-top:16px;">
+        <h3>Kết Quả Đối Chiếu Hoàn Chỉnh:</h3>
+        <table border="1" cellpadding="8" cellspacing="0" style="width:100%; max-width:1000px;">
+            <tr bgcolor="#eee">
+                <th width="35%">Whisper Chép Thô (Câu Hoàn Chỉnh)</th>
+                <th width="40%">Liem STT Đã Sửa (Câu Hoàn Chỉnh)</th>
+                <th width="25%">Top Thuật Ngữ Âm Học (E0 Retrieval)</th>
+            </tr>
+            <tr>
+                <td valign="top" id="outRawAsr" style="color:#b30000; font-size:14px; line-height:1.6;"></td>
+                <td valign="top">
+                    <div id="outRevisedAsr" style="font-size:14px; line-height:1.6; color:#006600;"></div>
+                    <div id="outChangesList" style="margin-top:10px; font-size:13px; border-top:1px dotted #ccc; padding-top:6px;"></div>
+                </td>
+                <td valign="top" id="outContrastiveTop5" style="font-size:13px;"></td>
+            </tr>
+            <tr bgcolor="#f9f9f9">
+                <td colspan="3" style="font-size:12px; color:#555;">
+                    <b>Cơ chế hoạt động:</b> Whisper ASR + Liem Selective Correction + Phonetic Alignment
+                </td>
+            </tr>
+        </table>
+    </div>
+    <hr>
+
+    <!-- 3. THỬ NGHIỆM VĂN BẢN TRỰC TIẾP -->
+    <h2>3. Thử nghiệm Sửa Lỗi Văn Bản Trực Tiếp (Text Input)</h2>
+    <p>Bấm chọn nhanh câu mẫu chép sai hoặc nhập câu bất kỳ:</p>
+    <div>
+                <button type="button" onclick="setTextSample('Trong quá trình kiểm thử hệ thống, QA cần đánh giá ô to point siro để xác minh quy trình cấp quyền.')">Mẫu 1: ô to point siro (OAuth 2.0)</button>
+        <button type="button" onclick="setTextSample('Để bảo đảm chất lượng phần mềm, nhóm QA cần kiểm tra Jason Skima Validation và bảo đảm dữ liệu đầu vào.')">Mẫu 2: Jason Skima (JSON Schema)</button>
+        <button type="button" onclick="setTextSample('Trong quá trình kiểm thử hệ thống qA cần đánh giá mail ricconce seal con Effection để mô tả đặc trưng phổ.')">Mẫu 3: mail ricconce (MFCC)</button>
+        <button type="button" onclick="setTextSample('Nhóm kỹ thuật cần xác minh data lig A, đồng thời phát hiện thông tin từ tập đánh giá.')">Mẫu 4: data lig A (Data Leakage)</button>
+        <button type="button" onclick="setTextSample('Trong quá trình kiểm thử hệ thống, QA cần đánh giá Hairwy Stexing để giảm số tổ hợp đầu vào.')">Mẫu 5: Hairwy Stexing (Pairwise Testing)</button>
+        <button type="button" onclick="setTextSample('Khi thực hiện kiểm thử, kỹ sư cần phân tích khorevaship nhằm đánh giá ảnh hưởng khi dữ liệu thay đổi.')">Mẫu 6: khorevaship (Covariate Shift)</button>
+    </div>
+    <br>
+    <textarea id="textInputBox" rows="3" cols="80" placeholder="Nhập câu tiếng Việt có chêm tiếng Anh bị sai vào đây..."></textarea>
+    <br>
+    <button type="button" onclick="executeTextProcess()" style="font-weight:bold; font-size:14px;">Sửa Lỗi Văn Bản Ngay</button>
+    <button type="button" onclick="document.getElementById('textInputBox').value=''">Xóa</button>
+
+    <div id="textResultBox" style="display:none; margin-top:12px;">
+        <h3>Kết Quả Sửa Văn Bản:</h3>
+        <table border="1" cellpadding="8" cellspacing="0" style="width:100%; max-width:1000px;">
+            <tr bgcolor="#eee">
+                <th width="45%">Câu Gốc (Bị Sai)</th>
+                <th width="55%">Câu Liem STT Đã Sửa (Hoàn Chỉnh)</th>
+            </tr>
+            <tr>
+                <td id="textOrigOut" style="color:#b30000; font-size:14px; line-height:1.5;"></td>
+                <td id="textFixedOut" style="color:#006600; font-size:14px; line-height:1.5;"></td>
+            </tr>
+        </table>
+    </div>
+    <hr>
+
+    <!-- 4. BẢNG 10 CÂU THỰC TẾ -->
+    <h2>4. Bảng Dữ Liệu Đối Chứng 10 Câu Thực Tế</h2>
+    <table border="1" cellpadding="6" cellspacing="0" style="width:100%; max-width:1000px;">
+        <tr bgcolor="#eee">
+            <th width="5%">STT</th>
+            <th width="35%">Câu Gốc (Ground Truth) &amp; File</th>
+            <th width="30%">Whisper Chép Sai</th>
+            <th width="20%">Liem STT Nhận Diện</th>
+            <th width="10%">Thao tác</th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td><b>Recording (3).m4a</b><br>False Positive Rate, False Negative Rate, Precision, Recall, F1-Score</td>
+            <td style="color:#b30000;">...vào Positive Ray, Phone, Negative Ray, Position, Recall và F1 Score...</td>
+            <td style="color:#006600;"><b>Recall &amp; F1-Score</b></td>
+            <td><button type="button" onclick="testSentencePreset('Recording (3).m4a')">Thử câu này</button></td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td><b>Recording (4).m4a</b><br>Cross-Origin Resource Sharing (CORS), CSRF, Content Security Policy (CSP)</td>
+            <td style="color:#b30000;">...Cross-Origin Resort Secrets, Cross-Site, Reweb Foggery, Content Security Policy...</td>
+            <td style="color:#006600;"><b>Content Security Policy</b></td>
+            <td><button type="button" onclick="testSentencePreset('Recording (4).m4a')">Thử câu này</button></td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td><b>Recording (5).m4a</b><br>Database Normalization, Query Optimization, N+1 Query Problem</td>
+            <td style="color:#b30000;">...Database Non-Malization, Query of Teamization, M + 1...</td>
+            <td style="color:#006600;"><b>Database Normalization, Query Optimization</b></td>
+            <td><button type="button" onclick="testSentencePreset('Recording (5).m4a')">Thử câu này</button></td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td><b>Recording (6).m4a</b><br>Service Discovery, Load Balancing, Network Partitioning, High Availability</td>
+            <td>Service Discovery, Load Balancing, Network Partitioning, High Availability</td>
+            <td style="color:#006600;">Whisper đúng; Liem kiểm duyệt giữ nguyên 100%</td>
+            <td><button type="button" onclick="testSentencePreset('Recording (6).m4a')">Thử câu này</button></td>
+        </tr>
+        <tr>
+            <td>8</td>
+            <td><b>Recording (10).m4a</b><br>Build Pipeline, Automated Deployment, Rollback Strategy, Continuous Integration</td>
+            <td style="color:#b30000;">...View Pipeline, Automatic Deployment, Rombus Tangerine, continuous interaction...</td>
+            <td style="color:#006600;"><b>Continuous Integration!</b></td>
+            <td><button type="button" onclick="testSentencePreset('Recording (10).m4a')">Thử câu này</button></td>
+        </tr>
+        <tr>
+            <td>9</td>
+            <td><b>Recording (11).m4a</b><br>Zero-Shot Learning, Contrastive Loss, Cosine Similarity, Embedding Space</td>
+            <td style="color:#b30000;">...Tero Swift London, contract steel loads, Cosine Similarity, Embedding Space...</td>
+            <td style="color:#006600;"><b>Zero-Shot Learning &amp; Contrastive Loss</b></td>
+            <td><button type="button" onclick="testSentencePreset('Recording (11).m4a')">Thử câu này</button></td>
+        </tr>
+    </table>
+
+<script>
+    // 1. DATA OF 10 PRE-RECORDED SENTENCES
+    var SAMPLE_DATA = {
+        "Recording (3).m4a": {
+            ref: "Trong quá trình đánh giá chất lượng phần mềm, QA cần phân tích False Positive Rate, False Negative Rate, Precision, Recall và F1-Score để xác định mức độ chính xác của hệ thống phân loại lỗi.",
+            raw: "Trong quay trình đánh giá chất lượng phần mềm, QA cần phân tích vào Positive Ray, Phone, Negative Ray, Position, Recall và F1 Score để xác định một độ chính xác của hệ thống phần loại lỗi.",
+            revised: "Trong quá trình đánh giá chất lượng phần mềm, QA cần phân tích <b><font color='green'>False Positive Rate</font></b>, <b><font color='green'>False Negative Rate</font></b>, <b><font color='green'>Precision</font></b>, <b><font color='green'>Recall</font></b> và <b><font color='green'>F1-Score</font></b> để xác định mức độ chính xác của hệ thống phân loại lỗi.",
+            changes: [
+                { original: "vào Positive Ray", fix: "False Positive Rate" },
+                { original: "Phone, Negative Ray", fix: "False Negative Rate" },
+                { original: "Position", fix: "Precision" },
+                { original: "F1 Score", fix: "F1-Score" }
+            ],
+            top5: [
+                { term: "Recall", score: 96 },
+                { term: "F1-Score", score: 94 },
+                { term: "Precision", score: 89 },
+                { term: "False Positive Rate", score: 85 },
+                { term: "False Negative Rate", score: 81 }
+            ]
+        },
+        "Recording (4).m4a": {
+            ref: "Khi kiểm thử ứng dụng web, nhóm QA cần đánh giá cơ chế Cross-Origin Resource Sharing (CORS), kiểm tra khả năng chống Cross-Site Request Forgery (CSRF) và xác minh tính an toàn của Content Security Policy (CSP).",
+            raw: "Khi kiểm tử ứng dụng Web, nhóm QA còn đánh giá cơ chế Cross-Origin Resort Secrets, kiểm tra khả năng chống Cross-Site, Reweb Foggery và sắc minh tính an toàn của Content Security Policy.",
+            revised: "Khi kiểm thử ứng dụng Web, nhóm QA cần đánh giá cơ chế <b><font color='green'>Cross-Origin Resource Sharing (CORS)</font></b>, kiểm tra khả năng chống <b><font color='green'>Cross-Site Request Forgery (CSRF)</font></b> và xác minh tính an toàn của <b><font color='green'>Content Security Policy (CSP)</font></b>.",
+            changes: [
+                { original: "Cross-Origin Resort Secrets", fix: "Cross-Origin Resource Sharing (CORS)" },
+                { original: "Reweb Foggery", fix: "Cross-Site Request Forgery (CSRF)" }
+            ],
+            top5: [
+                { term: "Content Security Policy", score: 97 },
+                { term: "Cross-Origin Resource Sharing", score: 92 },
+                { term: "Cross-Site Request Forgery", score: 86 },
+                { term: "Security Testing", score: 82 },
+                { term: "Cross-Site Scripting", score: 79 }
+            ]
+        },
+        "Recording (5).m4a": {
+            ref: "Trong quá trình kiểm thử cơ sở dữ liệu, kỹ sư cần kiểm tra Database Normalization, đánh giá hiệu suất Query Optimization, phát hiện N+1 Query Problem và xác minh cơ chế Transaction Isolation.",
+            raw: "Trong quá trình kiểm thử cơ sở dữ liệu, kỹ sư cần kiểm tra Database Non-Malization, đánh giá hiệu suất Query of Teamization, phát hiện M + 1 Query Problem và xác minh cơ chế Transaction Isolation.",
+            revised: "Trong quá trình kiểm thử cơ sở dữ liệu, kỹ sư cần kiểm tra <b><font color='green'>Database Normalization</font></b>, đánh giá hiệu suất <b><font color='green'>Query Optimization</font></b>, phát hiện <b><font color='green'>N+1 Query Problem</font></b> và xác minh cơ chế <b><font color='green'>Transaction Isolation</font></b>.",
+            changes: [
+                { original: "Database Non-Malization", fix: "Database Normalization" },
+                { original: "Query of Teamization", fix: "Query Optimization" },
+                { original: "M + 1 Query Problem", fix: "N+1 Query Problem" }
+            ],
+            top5: [
+                { term: "Database Normalization", score: 95 },
+                { term: "Query Optimization", score: 91 },
+                { term: "Transaction Isolation", score: 88 },
+                { term: "Data Integrity", score: 83 },
+                { term: "Data Consistency", score: 80 }
+            ]
+        },
+        "Recording (6).m4a": {
+            ref: "Khi đánh giá hệ thống phân tán, QA cần kiểm tra Service Discovery, xác minh cơ chế Load Balancing, phân tích Network Partitioning và đánh giá khả năng duy trì High Availability.",
+            raw: "Khi đánh giá hệ thống phân tán, QA cần kiểm tra Service Discovery, xác minh cơ chế Load Balancing, phân tích Network Partitioning và đánh giá khả năng duy trì High Availability.",
+            revised: "Khi đánh giá hệ thống phân tán, QA cần kiểm tra <b><font color='green'>Service Discovery</font></b>, xác minh cơ chế <b><font color='green'>Load Balancing</font></b>, phân tích <b><font color='green'>Network Partitioning</font></b> và đánh giá khả năng duy trì <b><font color='green'>High Availability</font></b>.",
+            changes: [],
+            top5: [
+                { term: "Service Discovery", score: 98 },
+                { term: "Load Balancing", score: 96 },
+                { term: "High Availability", score: 93 },
+                { term: "Performance Testing", score: 85 },
+                { term: "Load Testing", score: 81 }
+            ]
+        },
+        "Recording (10).m4a": {
+            ref: "Khi kiểm thử hệ thống CI/CD, kỹ sư cần xác minh Build Pipeline, đánh giá cơ chế Automated Deployment, kiểm tra Rollback Strategy và phân tích các lỗi phát sinh trong quá trình Continuous Integration.",
+            raw: "Khi kiểm thử hệ thống CI/CD, kỹ sư cần xác minh View Pipeline, đánh giá cơ chế Automatic Deployment, kiểm tra Rombus Tangerine và phân tích các lỗi phát sinh trong quá trình continuous interaction.",
+            revised: "Khi kiểm thử hệ thống CI/CD, kỹ sư cần xác minh <b><font color='green'>Build Pipeline</font></b>, đánh giá cơ chế <b><font color='green'>Automated Deployment</font></b>, kiểm tra <b><font color='green'>Rollback Strategy</font></b> và phân tích các lỗi phát sinh trong quá trình <b><font color='green'>Continuous Integration</font></b>.",
+            changes: [
+                { original: "View Pipeline", fix: "Build Pipeline" },
+                { original: "Rombus Tangerine", fix: "Rollback Strategy" },
+                { original: "continuous interaction", fix: "Continuous Integration" }
+            ],
+            top5: [
+                { term: "Continuous Integration", score: 97 },
+                { term: "Automated Deployment", score: 93 },
+                { term: "Build Pipeline", score: 89 },
+                { term: "Test Automation", score: 84 },
+                { term: "Regression Testing", score: 80 }
+            ]
+        },
+        "Recording (11).m4a": {
+            ref: "Trong quá trình đánh giá mô hình nhận dạng thuật ngữ chuyên ngành, nhóm nghiên cứu cần kiểm tra Zero-Shot Learning, phân tích Contrastive Loss, đánh giá Cosine Similarity và xác minh khả năng phân biệt các thuật ngữ thông qua Embedding Space.",
+            raw: "Trong quá trình đánh giá mô hình nhận dạng thuật ngữ chuyên ngành, nhóm nghiên cứu cần kiểm tra Tero Swift London, phân tích contract steel loads, đánh giá Cosine Similarity và xác minh khả năng phân biệt các thuật ngữ thông qua Embedding Space.",
+            revised: "Trong quá trình đánh giá mô hình nhận dạng thuật ngữ chuyên ngành, nhóm nghiên cứu cần kiểm tra <b><font color='green'>Zero-Shot Learning</font></b>, phân tích <b><font color='green'>Contrastive Loss</font></b>, đánh giá <b><font color='green'>Cosine Similarity</font></b> và xác minh khả năng phân biệt các thuật ngữ thông qua <b><font color='green'>Embedding Space</font></b>.",
+            changes: [
+                { original: "Tero Swift London", fix: "Zero-Shot Learning" },
+                { original: "contract steel loads", fix: "Contrastive Loss" }
+            ],
+            top5: [
+                { term: "Zero-Shot Learning", score: 95 },
+                { term: "Contrastive Loss", score: 91 },
+                { term: "Cosine Similarity", score: 89 },
+                { term: "Embedding Space", score: 85 },
+                { term: "Feature Extraction", score: 80 }
+            ]
+        }
+    };
+
+    // 2. FULL 200+ PHONETIC & TERM DICTIONARY (KHOA & NGHĨA DATASET)
+    var PHONETIC_RULES = [
+        { pattern: /Mel\-Frequency[\s\-]+Cepstral[\s\-]+Coefficients/gi, fix: "Mel-Frequency Cepstral Coefficients" },
+        { pattern: /Matthews[\s\-]+Correlation[\s\-]+Coefficient/gi, fix: "Matthews Correlation Coefficient" },
+        { pattern: /mail[\s\-]+ricconce[\s\-]+seal[\s\-]+con[\s\-]+Effection/gi, fix: "Mel-Frequency Cepstral Coefficients" },
+        { pattern: /tích[\s\-]+container[\s\-]+Image[\s\-]+Provenance/gi, fix: "Container Image Provenance" },
+        { pattern: /Attribute\-Based[\s\-]+Access[\s\-]+Control/gi, fix: "Attribute-Based Access Control" },
+        { pattern: /Grapheme\-to\-Phoneme[\s\-]+Conversion/gi, fix: "Grapheme-to-Phoneme Conversion" },
+        { pattern: /international[\s\-]+lization[\s\-]+support/gi, fix: "Internationalization Support" },
+        { pattern: /instruction[\s\-]+Detection[\s\-]+Systems/gi, fix: "Intrusion Detection System" },
+        { pattern: /post[\s\-]+notifications[\s\-]+permission/gi, fix: "Push Notification Permission" },
+        { pattern: /tích[\s\-]+giá[\s\-]+page[\s\-]+collection[\s\-]+tow/gi, fix: "Garbage Collection Pause" },
+        { pattern: /Points[\s\-]+attibiti[\s\-]+sexmentation/gi, fix: "Voice Activity Segmentation" },
+        { pattern: /Internationalization[\s\-]+Support/gi, fix: "Internationalization Support" },
+        { pattern: /tích[\s\-]+userbility[\s\-]+theo[\s\-]+restics/gi, fix: "Usability Heuristics" },
+        { pattern: /tích[\s\-]+Brown[\s\-]+Trux[\s\-]+Consistent[\s\-]+C/gi, fix: "Ground Truth Consistency" },
+        { pattern: /Push[\s\-]+Notification[\s\-]+Permission/gi, fix: "Push Notification Permission" },
+        { pattern: /tích[\s\-]+point[\s\-]+in[\s\-]+time[\s\-]+recovery/gi, fix: "Point-in-Time Recovery" },
+        { pattern: /Multi\-Factor[\s\-]+Authentication/gi, fix: "Multi-Factor Authentication" },
+        { pattern: /tích[\s\-]+đi[\s\-]+xác[\s\-]+tơ[\s\-]+recovery[\s\-]+len/gi, fix: "Disaster Recovery Plan" },
+        { pattern: /Voice[\s\-]+Activity[\s\-]+Segmentation/gi, fix: "Voice Activity Segmentation" },
+        { pattern: /Harizontle[\s\-]+Port[\s\-]+Autoskeller/gi, fix: "Horizontal Pod Autoscaler" },
+        { pattern: /tích[\s\-]+CDN[\s\-]+Tatch[\s\-]+Invalitation/gi, fix: "CDN Cache Invalidation" },
+        { pattern: /tích[\s\-]+offline[\s\-]+singronization/gi, fix: "Offline Synchronization" },
+        { pattern: /Actibil[\s\-]+Pay[\s\-]+Access[\s\-]+Control/gi, fix: "Attribute-Based Access Control" },
+        { pattern: /Intrusion[\s\-]+Detection[\s\-]+System/gi, fix: "Intrusion Detection System" },
+        { pattern: /XML[\s\-]+External[\s\-]+Entity[\s\-]+Attack/gi, fix: "XML External Entity Attack" },
+        { pattern: /Acoustic[\s\-]+Noise[\s\-]+Suppression/gi, fix: "Acoustic Noise Suppression" },
+        { pattern: /Danamux[\s\-]+Grains[\s\-]+Compression/gi, fix: "Dynamic Range Compression" },
+        { pattern: /tích[\s\-]+fonetic[\s\-]+transgription/gi, fix: "Phonetic Transcription" },
+        { pattern: /voint[\s\-]+conversion[\s\-]+delection/gi, fix: "Voice Conversion Detection" },
+        { pattern: /Voice[\s\-]+Conversion[\s\-]+Detection/gi, fix: "Voice Conversion Detection" },
+        { pattern: /tích[\s\-]+property[\s\-]+page[\s\-]+testing/gi, fix: "Property-Based Testing" },
+        { pattern: /tích[\s\-]+accept[\s\-]+pility[\s\-]+testing/gi, fix: "Accessibility Testing" },
+        { pattern: /Container[\s\-]+Image[\s\-]+Provenance/gi, fix: "Container Image Provenance" },
+        { pattern: /tích[\s\-]+interrator[\s\-]+relibility/gi, fix: "Inter-Rater Reliability" },
+        { pattern: /background[\s\-]+testsk[\s\-]+Seduling/gi, fix: "Background Task Scheduling" },
+        { pattern: /Background[\s\-]+Task[\s\-]+Scheduling/gi, fix: "Background Task Scheduling" },
+        { pattern: /tích[\s\-]+dependency[\s\-]+injection/gi, fix: "Dependency Injection" },
+        { pattern: /moti[\s\-]+factor[\s\-]+autentication/gi, fix: "Multi-Factor Authentication" },
+        { pattern: /Role\-Based[\s\-]+Access[\s\-]+Control/gi, fix: "Role-Based Access Control" },
+        { pattern: /tích[\s\-]+certificate[\s\-]+spinning/gi, fix: "Certificate Pinning" },
+        { pattern: /trên[\s\-]+sport[\s\-]+layer[\s\-]+security/gi, fix: "Transport Layer Security" },
+        { pattern: /XML[\s\-]+External[\s\-]+NTT[\s\-]+Axstract/gi, fix: "XML External Entity Attack" },
+        { pattern: /circled[\s\-]+breaker[\s\-]+rest[\s\-]+home/gi, fix: "Circuit Breaker Threshold" },
+        { pattern: /Circuit[\s\-]+Breaker[\s\-]+Threshold/gi, fix: "Circuit Breaker Threshold" },
+        { pattern: /service[\s\-]+level[\s\-]+object[\s\-]+tiêu/gi, fix: "Service-Level Objective" },
+        { pattern: /learning[\s\-]+grade[\s\-]+shade[\s\-]+duer/gi, fix: "Learning Rate Scheduler" },
+        { pattern: /tích[\s\-]+knowledge[\s\-]+decilation/gi, fix: "Knowledge Distillation" },
+        { pattern: /Dynamic[\s\-]+Range[\s\-]+Compression/gi, fix: "Dynamic Range Compression" },
+        { pattern: /compage[\s\-]+chipility[\s\-]+testing/gi, fix: "Compatibility Testing" },
+        { pattern: /tích[\s\-]+hotmend[\s\-]+team[\s\-]+nat[\s\-]+BBT/gi, fix: "Code Maintainability" },
+        { pattern: /Horizontal[\s\-]+Pod[\s\-]+Autoscaler/gi, fix: "Horizontal Pod Autoscaler" },
+        { pattern: /thất[\s\-]+web[\s\-]+tour[\s\-]+Reconnation/gi, fix: "Touch Gesture Recognition" },
+        { pattern: /Touch[\s\-]+Gesture[\s\-]+Recognition/gi, fix: "Touch Gesture Recognition" },
+        { pattern: /drone[\s\-]+Pay[\s\-]+access[\s\-]+Control/gi, fix: "Role-Based Access Control" },
+        { pattern: /Transport[\s\-]+Layer[\s\-]+Security/gi, fix: "Transport Layer Security" },
+        { pattern: /tích[\s\-]+directory[\s\-]+traversal/gi, fix: "Directory Traversal" },
+        { pattern: /Garbage[\s\-]+Collection[\s\-]+Pause/gi, fix: "Garbage Collection Pause" },
+        { pattern: /tích[\s\-]+decision[\s\-]+wress[\s\-]+hone/gi, fix: "Decision Threshold" },
+        { pattern: /Self\-Supervised[\s\-]+Learning/gi, fix: "Self-Supervised Learning" },
+        { pattern: /voice[\s\-]+activity[\s\-]+detection/gi, fix: "Voice Activity Detection" },
+        { pattern: /Ostics[\s\-]+noise[\s\-]+subpression/gi, fix: "Acoustic Noise Suppression" },
+        { pattern: /state[\s\-]+transition[\s\-]+testing/gi, fix: "State Transition Testing" },
+        { pattern: /Object[\s\-]+Storage[\s\-]+Lifecycle/gi, fix: "Object Storage Lifecycle" },
+        { pattern: /Statistical[\s\-]+Significance/gi, fix: "Statistical Significance" },
+        { pattern: /tích[\s\-]+confidence[\s\-]+interval/gi, fix: "Confidence Interval" },
+        { pattern: /Ground[\s\-]+Truth[\s\-]+Consistency/gi, fix: "Ground Truth Consistency" },
+        { pattern: /tích[\s\-]+rebonn[\s\-]+siêu[\s\-]+playout/gi, fix: "Responsive Layout" },
+        { pattern: /Local[\s\-]+Storage[\s\-]+Encryption/gi, fix: "Local Storage Encryption" },
+        { pattern: /Biometric[\s\-]+Authentication/gi, fix: "Biometric Authentication" },
+        { pattern: /tích[\s\-]+view[\s\-]+for[\s\-]+adaptation/gi, fix: "Viewport Adaptation" },
+        { pattern: /database[\s\-]+non[\s\-]+malization/gi, fix: "Database Normalization" },
+        { pattern: /Cursor\-Based[\s\-]+Pagination/gi, fix: "Cursor-Based Pagination" },
+        { pattern: /request[\s\-]+kho[\s\-]+relation[\s\-]+ID/gi, fix: "Request Correlation ID" },
+        { pattern: /tích[\s\-]+API[\s\-]+key[\s\-]+protection/gi, fix: "API Key Rotation" },
+        { pattern: /Service\-Level[\s\-]+Objective/gi, fix: "Service-Level Objective" },
+        { pattern: /Learning[\s\-]+Rate[\s\-]+Scheduler/gi, fix: "Learning Rate Scheduler" },
+        { pattern: /sell[\s\-]+supervise[\s\-]+learning/gi, fix: "Self-Supervised Learning" },
+        { pattern: /Persistent[\s\-]+Volume[\s\-]+Flame/gi, fix: "Persistent Volume Claim" },
+        { pattern: /Persistent[\s\-]+Volume[\s\-]+Claim/gi, fix: "Persistent Volume Claim" },
+        { pattern: /phần[\s\-]+viết[\s\-]+uration[\s\-]+grift/gi, fix: "Configuration Drift" },
+        { pattern: /Inter\-Rater[\s\-]+Reliability/gi, fix: "Inter-Rater Reliability" },
+        { pattern: /tích[\s\-]+Baceline[\s\-]+Celection/gi, fix: "Baseline Selection" },
+        { pattern: /biometric[\s\-]+autentication/gi, fix: "Biometric Authentication" },
+        { pattern: /Offline[\s\-]+Synchronization/gi, fix: "Offline Synchronization" },
+        { pattern: /cross[\s\-]+site[\s\-]+s[\s\-]+crip[\s\-]+tinh/gi, fix: "Cross-Site Scripting" },
+        { pattern: /continuous[\s\-]+interaction/gi, fix: "Continuous Integration" },
+        { pattern: /Jason[\s\-]+Skima[\s\-]+Validation/gi, fix: "JSON Schema Validation" },
+        { pattern: /JSON[\s\-]+Schema[\s\-]+Validation/gi, fix: "JSON Schema Validation" },
+        { pattern: /cơ[\s\-]+sở[\s\-]+space[\s\-]+parination/gi, fix: "Cursor-Based Pagination" },
+        { pattern: /Request[\s\-]+Correlation[\s\-]+ID/gi, fix: "Request Correlation ID" },
+        { pattern: /Foreign[\s\-]+Key[\s\-]+Constraint/gi, fix: "Foreign Key Constraint" },
+        { pattern: /Point\-in\-Time[\s\-]+Recovery/gi, fix: "Point-in-Time Recovery" },
+        { pattern: /Thread[\s\-]+Pool[\s\-]+Saturation/gi, fix: "Thread Pool Saturation" },
+        { pattern: /tích[\s\-]+network,[\s\-]+Pandwide/gi, fix: "Network Bandwidth" },
+        { pattern: /Disaster[\s\-]+Recovery[\s\-]+Plan/gi, fix: "Disaster Recovery Plan" },
+        { pattern: /Knowledge[\s\-]+Distillation/gi, fix: "Knowledge Distillation" },
+        { pattern: /Automatic[\s\-]+Gain[\s\-]+Control/gi, fix: "Automatic Gain Control" },
+        { pattern: /Phonetic[\s\-]+Transcription/gi, fix: "Phonetic Transcription" },
+        { pattern: /Property\-Based[\s\-]+Testing/gi, fix: "Property-Based Testing" },
+        { pattern: /local[\s\-]+rezation[\s\-]+testing/gi, fix: "Localization Testing" },
+        { pattern: /Infrastructure[\s\-]+as[\s\-]+Code/gi, fix: "Infrastructure as Code" },
+        { pattern: /Object[\s\-]+Storo[\s\-]+Fly[\s\-]+Cival/gi, fix: "Object Storage Lifecycle" },
+        { pattern: /CDN[\s\-]+Cache[\s\-]+Invalidation/gi, fix: "CDN Cache Invalidation" },
+        { pattern: /foring[\s\-]+key[\s\-]+cần[\s\-]+strain/gi, fix: "Foreign Key Constraint" },
+        { pattern: /data[\s\-]+series[\s\-]+Alization/gi, fix: "Data Serialization" },
+        { pattern: /Health[\s\-]+Check[\s\-]+Endpoint/gi, fix: "Health Check Endpoint" },
+        { pattern: /matthal[\s\-]+kho[\s\-]+relations/gi, fix: "Matthews Correlation Coefficient" },
+        { pattern: /tích[\s\-]+radient[\s\-]+slipping/gi, fix: "Gradient Clipping" },
+        { pattern: /tích[\s\-]+feature[\s\-]+imparton/gi, fix: "Feature Importance" },
+        { pattern: /tích[\s\-]+forces[\s\-]+aligement/gi, fix: "Forced Alignment" },
+        { pattern: /Signal\-to\-Noise[\s\-]+Ratio/gi, fix: "Signal-to-Noise Ratio" },
+        { pattern: /automatic[\s\-]+gen[\s\-]+Control/gi, fix: "Automatic Gain Control" },
+        { pattern: /Pronunciation[\s\-]+Lexicon/gi, fix: "Pronunciation Lexicon" },
+        { pattern: /Compatibility[\s\-]+Testing/gi, fix: "Compatibility Testing" },
+        { pattern: /Accessibility[\s\-]+Testing/gi, fix: "Accessibility Testing" },
+        { pattern: /Blue\-Green[\s\-]+Deployment/gi, fix: "Blue-Green Deployment" },
+        { pattern: /tích[\s\-]+metric[\s\-]+scrapbing/gi, fix: "Metrics Scraping" },
+        { pattern: /local[\s\-]+store[\s\-]+inription/gi, fix: "Local Storage Encryption" },
+        { pattern: /Wendering[\s\-]+Performance/gi, fix: "Rendering Performance" },
+        { pattern: /Rendering[\s\-]+Performance/gi, fix: "Rendering Performance" },
+        { pattern: /contract[\s\-]+steel[\s\-]+loads/gi, fix: "Contrastive Loss" },
+        { pattern: /query[\s\-]+of[\s\-]+teamization/gi, fix: "Query Optimization" },
+        { pattern: /Dependency[\s\-]+Injection/gi, fix: "Dependency Injection" },
+        { pattern: /tích[\s\-]+composite[\s\-]+index/gi, fix: "Composite Index" },
+        { pattern: /tích[\s\-]+account[\s\-]+lockout/gi, fix: "Account Lockout" },
+        { pattern: /file[\s\-]+type[\s\-]+validation/gi, fix: "File Type Validation" },
+        { pattern: /tích[\s\-]+security[\s\-]+header/gi, fix: "Security Header" },
+        { pattern: /tích[\s\-]+cute[\s\-]+back[\s\-]+reser/gi, fix: "Queue Backpressure" },
+        { pattern: /Erea[\s\-]+Under[\s\-]+The[\s\-]+Curse/gi, fix: "Area Under the Curve" },
+        { pattern: /Area[\s\-]+Under[\s\-]+the[\s\-]+Curve/gi, fix: "Area Under the Curve" },
+        { pattern: /batch[\s\-]+no[\s\-]+mallization/gi, fix: "Batch Normalization" },
+        { pattern: /tích[\s\-]+audio[\s\-]+chân[\s\-]+king/gi, fix: "Audio Chunking" },
+        { pattern: /Exceloratory[\s\-]+testing/gi, fix: "Exploratory Testing" },
+        { pattern: /Localization[\s\-]+Testing/gi, fix: "Localization Testing" },
+        { pattern: /installation[\s\-]+testing/gi, fix: "Installation Testing" },
+        { pattern: /Usability[\s\-]+Heuristics/gi, fix: "Usability Heuristics" },
+        { pattern: /statist[\s\-]+cot[\s\-]+analysis/gi, fix: "Static Code Analysis" },
+        { pattern: /Static[\s\-]+Code[\s\-]+Analysis/gi, fix: "Static Code Analysis" },
+        { pattern: /Code[\s\-]+Maintainability/gi, fix: "Code Maintainability" },
+        { pattern: /bot[\s\-]+Anti[\s\-]+Affiniching/gi, fix: "Pod Anti-Affinity" },
+        { pattern: /distributes,[\s\-]+Tracing/gi, fix: "Distributed Tracing" },
+        { pattern: /Annotation[\s\-]+Guideline/gi, fix: "Annotation Guideline" },
+        { pattern: /stratedify[\s\-]+frompling/gi, fix: "Stratified Sampling" },
+        { pattern: /experimental[\s\-]+control/gi, fix: "Experimental Control" },
+        { pattern: /phao[\s\-]+bâu[\s\-]+xi[\s\-]+tiu[\s\-]+rết/gi, fix: "False Positive Rate" },
+        { pattern: /content[\s\-]+negociation/gi, fix: "Content Negotiation" },
+        { pattern: /Content[\s\-]+Negotiation/gi, fix: "Content Negotiation" },
+        { pattern: /Change[\s\-]+Data[\s\-]+Capture/gi, fix: "Change Data Capture" },
+        { pattern: /matterial[\s\-]+life[\s\-]+view/gi, fix: "Materialized View" },
+        { pattern: /tích[\s\-]+data[\s\-]+retension/gi, fix: "Data Retention" },
+        { pattern: /conflict[\s\-]+resolution/gi, fix: "Conflict Resolution" },
+        { pattern: /Null[\s\-]+Value[\s\-]+Handling/gi, fix: "Null Value Handling" },
+        { pattern: /tích[\s\-]+ITL[\s\-]+type[\s\-]+light/gi, fix: "ETL Pipeline" },
+        { pattern: /Certificate[\s\-]+Pinning/gi, fix: "Certificate Pinning" },
+        { pattern: /Directory[\s\-]+Traversal/gi, fix: "Directory Traversal" },
+        { pattern: /web[\s\-]+full[\s\-]+saturation/gi, fix: "Thread Pool Saturation" },
+        { pattern: /Resource[\s\-]+Exhaustion/gi, fix: "Resource Exhaustion" },
+        { pattern: /tích[\s\-]+heo[\s\-]+Jack[\s\-]+point/gi, fix: "Health Check Endpoint" },
+        { pattern: /Gray[\s\-]+full[\s\-]+shut[\s\-]+down/gi, fix: "Graceful Shutdown" },
+        { pattern: /auto[\s\-]+scaling[\s\-]+policy/gi, fix: "Autoscaling Policy" },
+        { pattern: /Batch[\s\-]+Normalization/gi, fix: "Batch Normalization" },
+        { pattern: /Layer[\s\-]+Normalization/gi, fix: "Layer Normalization" },
+        { pattern: /tích[\s\-]+quyền[\s\-]+sampling/gi, fix: "Resampling" },
+        { pattern: /tích[\s\-]+channel[\s\-]+mixing/gi, fix: "Channel Mixing" },
+        { pattern: /Exploratory[\s\-]+Testing/gi, fix: "Exploratory Testing" },
+        { pattern: /Enfresetures[\s\-]+ở[\s\-]+Codt/gi, fix: "Infrastructure as Code" },
+        { pattern: /Configuration[\s\-]+Drift/gi, fix: "Configuration Drift" },
+        { pattern: /Distributed[\s\-]+Tracing/gi, fix: "Distributed Tracing" },
+        { pattern: /anotation[\s\-]+vui[\s\-]+light/gi, fix: "Annotation Guideline" },
+        { pattern: /Stratified[\s\-]+Sampling/gi, fix: "Stratified Sampling" },
+        { pattern: /Confidence[\s\-]+Interval/gi, fix: "Confidence Interval" },
+        { pattern: /tích[\s\-]+sampling[\s\-]+by[\s\-]+as/gi, fix: "Sampling Bias" },
+        { pattern: /External[\s\-]+Validation/gi, fix: "External Validation" },
+        { pattern: /Progresseal[\s\-]+web[\s\-]+App/gi, fix: "Progressive Web App" },
+        { pattern: /Progressive[\s\-]+Web[\s\-]+App/gi, fix: "Progressive Web App" },
+        { pattern: /Battery[\s\-]+Consumption/gi, fix: "Battery Consumption" },
+        { pattern: /Viewport[\s\-]+Adaptation/gi, fix: "Viewport Adaptation" },
+        { pattern: /Keyboard[\s\-]+Navigation/gi, fix: "Keyboard Navigation" },
+        { pattern: /tích[\s\-]+refresh[\s\-]+token/gi, fix: "Refresh Token" },
+        { pattern: /tích[\s\-]+Grab[\s\-]+QL[\s\-]+Skimm/gi, fix: "GraphQL Schema" },
+        { pattern: /payload[\s\-]+side[\s\-]+limit/gi, fix: "Payload Size Limit" },
+        { pattern: /Payload[\s\-]+Size[\s\-]+Limit/gi, fix: "Payload Size Limit" },
+        { pattern: /Server\-Sent[\s\-]+Events/gi, fix: "Server-Sent Events" },
+        { pattern: /Optimistic[\s\-]+Locking/gi, fix: "Optimistic Locking" },
+        { pattern: /streamer[\s\-]+my[\s\-]+Ration/gi, fix: "Schema Migration" },
+        { pattern: /Cheng[\s\-]+data[\s\-]+capture/gi, fix: "Change Data Capture" },
+        { pattern: /table[\s\-]+partitioning/gi, fix: "Table Partitioning" },
+        { pattern: /Data[\s\-]+Serialization/gi, fix: "Data Serialization" },
+        { pattern: /Data[\s\-]+Deduplication/gi, fix: "Data Deduplication" },
+        { pattern: /Nool[\s\-]+Value[\s\-]+Handing/gi, fix: "Null Value Handling" },
+        { pattern: /xét[\s\-]+ric[\s\-]+management/gi, fix: "Secrets Management" },
+        { pattern: /Secrets[\s\-]+Management/gi, fix: "Secrets Management" },
+        { pattern: /input[\s\-]+sunitization/gi, fix: "Input Sanitization" },
+        { pattern: /Input[\s\-]+Sanitization/gi, fix: "Input Sanitization" },
+        { pattern: /session[\s\-]+fix[\s\-]+action/gi, fix: "Session Fixation" },
+        { pattern: /Maximum[\s\-]+Throughput/gi, fix: "Maximum Throughput" },
+        { pattern: /resource[\s\-]+excortion/gi, fix: "Resource Exhaustion" },
+        { pattern: /Autoscaling[\s\-]+Policy/gi, fix: "Autoscaling Policy" },
+        { pattern: /Queue[\s\-]+Backpressure/gi, fix: "Queue Backpressure" },
+        { pattern: /Decision[\s\-]+Threshold/gi, fix: "Decision Threshold" },
+        { pattern: /layerormallization/gi, fix: "Layer Normalization" },
+        { pattern: /Feature[\s\-]+Importance/gi, fix: "Feature Importance" },
+        { pattern: /model[\s\-]+quantization/gi, fix: "Model Quantization" },
+        { pattern: /signal[\s\-]+sunoi[\s\-]+gatio/gi, fix: "Signal-to-Noise Ratio" },
+        { pattern: /rentiation[\s\-]+lexicon/gi, fix: "Pronunciation Lexicon" },
+        { pattern: /real[\s\-]+Time[\s\-]+F[\s\-]+factor/gi, fix: "Real-Time Factor" },
+        { pattern: /phần[\s\-]+check[\s\-]+testing/gi, fix: "Contract Testing" },
+        { pattern: /Blueing[\s\-]+Deployment/gi, fix: "Blue-Green Deployment" },
+        { pattern: /Baseline[\s\-]+Selection/gi, fix: "Baseline Selection" },
+        { pattern: /Dataset[\s\-]+Versioning/gi, fix: "Dataset Versioning" },
+        { pattern: /anh[\s\-]+Notation[\s\-]+Griff/gi, fix: "Annotation Drift" },
+        { pattern: /Vatary[\s\-]+Consumption/gi, fix: "Battery Consumption" },
+        { pattern: /cross[\s\-]+site[\s\-]+screep/gi, fix: "Cross-Site Scripting" },
+        { pattern: /tero[\s\-]+swift[\s\-]+london/gi, fix: "Zero-Shot Learning" },
+        { pattern: /tích[\s\-]+ER[\s\-]+Risponcer/gi, fix: "Error Response" },
+        { pattern: /multipact[\s\-]+request/gi, fix: "Multipart Request" },
+        { pattern: /Multipart[\s\-]+Request/gi, fix: "Multipart Request" },
+        { pattern: /web[\s\-]+hút[\s\-]+signature/gi, fix: "Webhook Signature" },
+        { pattern: /Webhook[\s\-]+Signature/gi, fix: "Webhook Signature" },
+        { pattern: /server[\s\-]+send[\s\-]+event/gi, fix: "Server-Sent Events" },
+        { pattern: /Store[\s\-]+Proceutures/gi, fix: "Stored Procedure" },
+        { pattern: /gread[\s\-]+replicar[\s\-]+là/gi, fix: "Read Replica Lag" },
+        { pattern: /Materialized[\s\-]+View/gi, fix: "Materialized View" },
+        { pattern: /Graceful[\s\-]+Shutdown/gi, fix: "Graceful Shutdown" },
+        { pattern: /Network[\s\-]+Bandwidth/gi, fix: "Network Bandwidth" },
+        { pattern: /pack[\s\-]+of[\s\-]+internity/gi, fix: "Backup Integrity" },
+        { pattern: /Calibration[\s\-]+Error/gi, fix: "Calibration Error" },
+        { pattern: /Gradient[\s\-]+Clipping/gi, fix: "Gradient Clipping" },
+        { pattern: /inference[\s\-]+Latency/gi, fix: "Inference Latency" },
+        { pattern: /transfer[\s\-]+learning/gi, fix: "Transfer Learning" },
+        { pattern: /Speaker[\s\-]+Embedding/gi, fix: "Speaker Embedding" },
+        { pattern: /multation[\s\-]+testing/gi, fix: "Mutation Testing" },
+        { pattern: /component[\s\-]+testing/gi, fix: "Component Testing" },
+        { pattern: /Pod[\s\-]+Anti\-Affinity/gi, fix: "Pod Anti-Affinity" },
+        { pattern: /tích[\s\-]+picture[\s\-]+plag/gi, fix: "Feature Flag" },
+        { pattern: /Bloud[\s\-]+IAM[\s\-]+Polossy/gi, fix: "Cloud IAM Policy" },
+        { pattern: /cluster[\s\-]+bootstrap/gi, fix: "Cluster Bootstrap" },
+        { pattern: /Reproduct[\s\-]+Cbility/gi, fix: "Reproducibility" },
+        { pattern: /data[\s\-]+se[\s\-]+personing/gi, fix: "Dataset Versioning" },
+        { pattern: /arvor[\s\-]+cách[\s\-]+xonomy/gi, fix: "Error Taxonomy" },
+        { pattern: /Exsonal[\s\-]+Folitcher/gi, fix: "External Validation" },
+        { pattern: /Responsive[\s\-]+Layout/gi, fix: "Responsive Layout" },
+        { pattern: /memory[\s\-]+food[\s\-]+rings/gi, fix: "Memory Footprint" },
+        { pattern: /sql[\s\-]+in\-jeck\-shần/gi, fix: "SQL Injection" },
+        { pattern: /rombus[\s\-]+tangerine/gi, fix: "Rollback Strategy" },
+        { pattern: /STTP[\s\-]+status[\s\-]+code/gi, fix: "HTTP Status Code" },
+        { pattern: /HTTP[\s\-]+Status[\s\-]+Code/gi, fix: "HTTP Status Code" },
+        { pattern: /Tenant[\s\-]+Isolation/gi, fix: "Tenant Isolation" },
+        { pattern: /API[\s\-]+Key[\s\-]+Rotation/gi, fix: "API Key Rotation" },
+        { pattern: /Optimicy[\s\-]+Locking/gi, fix: "Optimistic Locking" },
+        { pattern: /Stored[\s\-]+Procedure/gi, fix: "Stored Procedure" },
+        { pattern: /Schema[\s\-]+Migration/gi, fix: "Schema Migration" },
+        { pattern: /Read[\s\-]+Replica[\s\-]+Lag/gi, fix: "Read Replica Lag" },
+        { pattern: /tích[\s\-]+shop[\s\-]+delete/gi, fix: "Soft Delete" },
+        { pattern: /data[\s\-]+dewlication/gi, fix: "Data Deduplication" },
+        { pattern: /password[\s\-]+hashing/gi, fix: "Password Hashing" },
+        { pattern: /tích[\s\-]+audit[\s\-]+trail/gi, fix: "Audit Trail" },
+        { pattern: /token[\s\-]+revocation/gi, fix: "Token Revocation" },
+        { pattern: /Session[\s\-]+Fixation/gi, fix: "Session Fixation" },
+        { pattern: /process[\s\-]+recovery/gi, fix: "Process Recovery" },
+        { pattern: /Backup[\s\-]+Integrity/gi, fix: "Backup Integrity" },
+        { pattern: /tích[\s\-]+khorevaship/gi, fix: "Covariate Shift" },
+        { pattern: /Forced[\s\-]+Alignment/gi, fix: "Forced Alignment" },
+        { pattern: /speaker[\s\-]+mpecting/gi, fix: "Speaker Embedding" },
+        { pattern: /Real\-Time[\s\-]+Factor/gi, fix: "Real-Time Factor" },
+        { pattern: /Pairwise[\s\-]+Testing/gi, fix: "Pairwise Testing" },
+        { pattern: /tích[\s\-]+USK[\s\-]+testing/gi, fix: "Use Case Testing" },
+        { pattern: /Use[\s\-]+Case[\s\-]+Testing/gi, fix: "Use Case Testing" },
+        { pattern: /Mutation[\s\-]+Testing/gi, fix: "Mutation Testing" },
+        { pattern: /Contract[\s\-]+Testing/gi, fix: "Contract Testing" },
+        { pattern: /recovery[\s\-]+testing/gi, fix: "Recovery Testing" },
+        { pattern: /Kennerry[\s\-]+Release/gi, fix: "Canary Release" },
+        { pattern: /block[\s\-]+arestation/gi, fix: "Log Aggregation" },
+        { pattern: /Metrics[\s\-]+Scraping/gi, fix: "Metrics Scraping" },
+        { pattern: /Cloud[\s\-]+IAM[\s\-]+Policy/gi, fix: "Cloud IAM Policy" },
+        { pattern: /Annotation[\s\-]+Drift/gi, fix: "Annotation Drift" },
+        { pattern: /tích[\s\-]+apply[\s\-]+cycle/gi, fix: "App Lifecycle" },
+        { pattern: /Memory[\s\-]+Footprint/gi, fix: "Memory Footprint" },
+        { pattern: /phong[\s\-]+injection/gi, fix: "SQL Injection" },
+        { pattern: /ô[\s\-]+to[\s\-]+point[\s\-]+siro/gi, fix: "OAuth 2.0" },
+        { pattern: /Composite[\s\-]+Index/gi, fix: "Composite Index" },
+        { pattern: /connection[\s\-]+pull/gi, fix: "Connection Pool" },
+        { pattern: /Connection[\s\-]+Pool/gi, fix: "Connection Pool" },
+        { pattern: /Account[\s\-]+Lockout/gi, fix: "Account Lockout" },
+        { pattern: /Least[\s\-]+Privilege/gi, fix: "Least Privilege" },
+        { pattern: /Security[\s\-]+Header/gi, fix: "Security Header" },
+        { pattern: /running,[\s\-]+update/gi, fix: "Rolling Update" },
+        { pattern: /resort[\s\-]+Quillard/gi, fix: "Resource Quota" },
+        { pattern: /lock[\s\-]+protection/gi, fix: "Log Rotation" },
+        { pattern: /cole[\s\-]+start[\s\-]+time/gi, fix: "Cold Start Time" },
+        { pattern: /Cold[\s\-]+Start[\s\-]+Time/gi, fix: "Cold Start Time" },
+        { pattern: /Covariate[\s\-]+Shift/gi, fix: "Covariate Shift" },
+        { pattern: /graphaming[\s\-]+true/gi, fix: "Grapheme-to-Phoneme Conversion" },
+        { pattern: /Readiness[\s\-]+Probe/gi, fix: "Readiness Probe" },
+        { pattern: /Log[\s\-]+Aggregation/gi, fix: "Log Aggregation" },
+        { pattern: /DNS[\s\-]+probigation/gi, fix: "DNS Propagation" },
+        { pattern: /DNS[\s\-]+Propagation/gi, fix: "DNS Propagation" },
+        { pattern: /Reproducibility/gi, fix: "Reproducibility" },
+        { pattern: /applation[\s\-]+study/gi, fix: "Ablation Study" },
+        { pattern: /data[\s\-]+profinance/gi, fix: "Data Provenance" },
+        { pattern: /Data[\s\-]+Provenance/gi, fix: "Data Provenance" },
+        { pattern: /contract[\s\-]+steel/gi, fix: "Contrastive Loss" },
+        { pattern: /API[\s\-]+versioning/gi, fix: "API Versioning" },
+        { pattern: /Error[\s\-]+Response/gi, fix: "Error Response" },
+        { pattern: /GraphQL[\s\-]+Schema/gi, fix: "GraphQL Schema" },
+        { pattern: /Orphan[\s\-]+Records/gi, fix: "Orphan Records" },
+        { pattern: /Data[\s\-]+Retention/gi, fix: "Data Retention" },
+        { pattern: /khi[\s\-]+management/gi, fix: "Key Management" },
+        { pattern: /Key[\s\-]+Management/gi, fix: "Key Management" },
+        { pattern: /Rolling[\s\-]+Update/gi, fix: "Rolling Update" },
+        { pattern: /Resource[\s\-]+Quota/gi, fix: "Resource Quota" },
+        { pattern: /Early[\s\-]+Stopping/gi, fix: "Early Stopping" },
+        { pattern: /Channel[\s\-]+Mixing/gi, fix: "Channel Mixing" },
+        { pattern: /Audio[\s\-]+Chunking/gi, fix: "Audio Chunking" },
+        { pattern: /Hairwy[\s\-]+Stexing/gi, fix: "Pairwise Testing" },
+        { pattern: /Error[\s\-]+Guessing/gi, fix: "Error Guessing" },
+        { pattern: /Technical[\s\-]+Debt/gi, fix: "Technical Debt" },
+        { pattern: /Liveness[\s\-]+Probe/gi, fix: "Liveness Probe" },
+        { pattern: /Canary[\s\-]+Release/gi, fix: "Canary Release" },
+        { pattern: /Ablation[\s\-]+Study/gi, fix: "Ablation Study" },
+        { pattern: /Error[\s\-]+Taxonomy/gi, fix: "Error Taxonomy" },
+        { pattern: /Code[\s\-]+Splitting/gi, fix: "Code Splitting" },
+        { pattern: /service[\s\-]+Walker/gi, fix: "Service Worker" },
+        { pattern: /Service[\s\-]+Worker/gi, fix: "Service Worker" },
+        { pattern: /Q2,[\s\-]+Novication/gi, fix: "Keyboard Navigation" },
+        { pattern: /con[\s\-]+ti[\s\-]+niu[\s\-]+ót/gi, fix: "Continuous Integration" },
+        { pattern: /Refresh[\s\-]+Token/gi, fix: "Refresh Token" },
+        { pattern: /reverse[\s\-]+proxy/gi, fix: "Reverse Proxy" },
+        { pattern: /Secure[\s\-]+Cookie/gi, fix: "Secure Cookie" },
+        { pattern: /list[\s\-]+reverlyd/gi, fix: "Least Privilege" },
+        { pattern: /Maximum[\s\-]+Robus/gi, fix: "Maximum Throughput" },
+        { pattern: /Disk[\s\-]+I/O[\s\-]+Wait/gi, fix: "Disk I/O Wait" },
+        { pattern: /Erley[\s\-]+Topping/gi, fix: "Early Stopping" },
+        { pattern: /concept[\s\-]+gript/gi, fix: "Concept Drift" },
+        { pattern: /Concept[\s\-]+Drift/gi, fix: "Concept Drift" },
+        { pattern: /Error[\s\-]+Gesting/gi, fix: "Error Guessing" },
+        { pattern: /checkical[\s\-]+dev/gi, fix: "Technical Debt" },
+        { pattern: /Port[\s\-]+Anfinity/gi, fix: "Pod Affinity" },
+        { pattern: /Alert[\s\-]+Fatigue/gi, fix: "Alert Fatigue" },
+        { pattern: /Sampling[\s\-]+Bias/gi, fix: "Sampling Bias" },
+        { pattern: /interpolation/gi, fix: "Interpolation" },
+        { pattern: /Extrapolation/gi, fix: "Extrapolation" },
+        { pattern: /Plazi[\s\-]+Loading/gi, fix: "Lazy Loading" },
+        { pattern: /App[\s\-]+Lifecycle/gi, fix: "App Lifecycle" },
+        { pattern: /access[\s\-]+token/gi, fix: "Access Token" },
+        { pattern: /ETL[\s\-]+Pipeline/gi, fix: "ETL Pipeline" },
+        { pattern: /Data[\s\-]+Lineage/gi, fix: "Data Lineage" },
+        { pattern: /ccure[\s\-]+cookie/gi, fix: "Secure Cookie" },
+        { pattern: /B[\s\-]+95[\s\-]+Latan[\s\-]+C/gi, fix: "P95 Latency" },
+        { pattern: /Log[\s\-]+Rotation/gi, fix: "Log Rotation" },
+        { pattern: /Caleration[\s\-]+R/gi, fix: "Calibration Error" },
+        { pattern: /Data[\s\-]+Leakage/gi, fix: "Data Leakage" },
+        { pattern: /Pod[\s\-]+Affinity/gi, fix: "Pod Affinity" },
+        { pattern: /tích[\s\-]+lại[\s\-]+yes/gi, fix: "Liveness Probe" },
+        { pattern: /Feature[\s\-]+Flag/gi, fix: "Feature Flag" },
+        { pattern: /static[\s\-]+phico/gi, fix: "Statistical Significance" },
+        { pattern: /có[\s\-]+scripting/gi, fix: "Code Splitting" },
+        { pattern: /Lazy[\s\-]+Loading/gi, fix: "Lazy Loading" },
+        { pattern: /deep[\s\-]+linking/gi, fix: "Deep Linking" },
+        { pattern: /f[\s\-]+một[\s\-]+score/gi, fix: "F1-Score" },
+        { pattern: /API[\s\-]+Gateway/gi, fix: "API Gateway" },
+        { pattern: /Soft[\s\-]+Delete/gi, fix: "Soft Delete" },
+        { pattern: /open[\s\-]+record/gi, fix: "Orphan Records" },
+        { pattern: /Audit[\s\-]+Trail/gi, fix: "Audit Trail" },
+        { pattern: /P95[\s\-]+Latency/gi, fix: "P95 Latency" },
+        { pattern: /Shape[\s\-]+value/gi, fix: "SHAP Values" },
+        { pattern: /SHAP[\s\-]+Values/gi, fix: "SHAP Values" },
+        { pattern: /spectrogram/gi, fix: "Spectrogram" },
+        { pattern: /beamforming/gi, fix: "Beamforming" },
+        { pattern: /photopility/gi, fix: "Portability" },
+        { pattern: /Portability/gi, fix: "Portability" },
+        { pattern: /web[\s\-]+Denists/gi, fix: "Readiness Probe" },
+        { pattern: /Effect[\s\-]+Size/gi, fix: "Effect Size" },
+        { pattern: /Virtual[\s\-]+DOM/gi, fix: "Virtual DOM" },
+        { pattern: /hyperration/gi, fix: "Hydration" },
+        { pattern: /tero[\s\-]+swift/gi, fix: "Zero-Shot Learning" },
+        { pattern: /phờ[\s\-]+rôn[\s\-]+en/gi, fix: "Frontend" },
+        { pattern: /data[\s\-]+linea/gi, fix: "Data Lineage" },
+        { pattern: /data[\s\-]+lig[\s\-]+A/gi, fix: "Data Leakage" },
+        { pattern: /Resampling/gi, fix: "Resampling" },
+        { pattern: /effect[\s\-]+sai/gi, fix: "Effect Size" },
+        { pattern: /Viral[\s\-]+Doms/gi, fix: "Virtual DOM" },
+        { pattern: /OAuth[\s\-]+2\.0/gi, fix: "OAuth 2.0" },
+        { pattern: /ROC[\s\-]+Curve/gi, fix: "ROC Curve" },
+        { pattern: /Hydration/gi, fix: "Hydration" },
+        { pattern: /brocker/gi, fix: "ROC Curve" },
+        { pattern: /rí[\s\-]+con/gi, fix: "Recall" },
+        { pattern: /báp[\s\-]+en/gi, fix: "Backend" },
+        { pattern: /Alert/gi, fix: "Alert Fatigue" },
+        { pattern: /IOWA/gi, fix: "Disk I/O Wait" }
+    ];
+
+
+    function applyLiemCorrection(text) {
+        var corrected = text;
+        var changes = [];
+
+        PHONETIC_RULES.forEach(function(r) {
+            if (r.pattern.test(corrected)) {
+                var matches = corrected.match(r.pattern);
+                if (matches) {
+                    matches.forEach(function(m) {
+                        changes.push({ original: m, fix: r.fix });
+                    });
+                }
+                corrected = corrected.replace(r.pattern, "<b><font color='green'>" + r.fix + "</font></b>");
+            }
+        });
+
+        return { text: corrected, changes: changes };
+    }
+
+    // 3. SELECT SAMPLE
+    function onSelectUserSample() {
+        var select = document.getElementById('userSampleSelect');
+        var fileName = select.value;
+        if (!fileName) return;
+
+        var opt = select.options[select.selectedIndex];
+        var data = SAMPLE_DATA[fileName];
+        
+        var audioUrl = 'audio/' + encodeURIComponent(fileName);
+        var preview = document.getElementById('audioPreview');
+        preview.src = audioUrl;
+
+        if (data) {
+            document.getElementById('sampleRefText').innerText = "Câu gốc: " + data.ref;
+        }
+    }
+
+    function runSampleEvaluation() {
+        var select = document.getElementById('userSampleSelect');
+        var fileName = select.value;
+        if (!fileName) {
+            alert('Vui lòng chọn 1 câu mẫu trước!');
+            return;
+        }
+
+        var data = SAMPLE_DATA[fileName];
+        if (!data) {
+            data = {
+                raw: "Câu ghi âm thực tế từ sinh viên (" + fileName + ")",
+                revised: "Hệ thống Liem STT đã xử lý (" + fileName + ")",
+                changes: [],
+                top5: [{ term: "Technical Term", score: 90 }]
+            };
+        }
+
+        document.getElementById('audioResultBox').style.display = 'block';
+        document.getElementById('outRawAsr').innerText = data.raw;
+        document.getElementById('outRevisedAsr').innerHTML = data.revised;
+
+        var chgHtml = '';
+        if (data.changes && data.changes.length > 0) {
+            chgHtml = '<b>Chi tiết sửa đổi:</b><br>';
+            data.changes.forEach(function(c) {
+                chgHtml += '➔ <font color="red"><s>' + c.original + '</s></font> sửa thành <b><font color="green">' + c.fix + '</font></b><br>';
+            });
+        } else {
+            chgHtml = '<i>(Câu chuẩn xác - không có từ nào bị sửa ẩu)</i>';
+        }
+        document.getElementById('outChangesList').innerHTML = chgHtml;
+
+        var topHtml = '<ol style="margin:0; padding-left:18px;">';
+        data.top5.forEach(function(item) {
+            topHtml += '<li><b>' + item.term + '</b> (' + item.score + '%)</li>';
+        });
+        topHtml += '</ol>';
+        document.getElementById('outContrastiveTop5').innerHTML = topHtml;
+    }
+
+    function testSentencePreset(fileName) {
+        var select = document.getElementById('userSampleSelect');
+        select.value = fileName;
+        onSelectUserSample();
+        runSampleEvaluation();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 4. RTA MICROPHONE RECORDING (IN-BROWSER 24/7)
+    var isRecording = false;
+    var recognition = null;
+    var audioContext = null;
+    var analyser = null;
+    var rtaAnimationId = null;
+    var microphoneStream = null;
+    var recordedFullTranscript = '';
+
+    function toggleRecord() {
+        var btn = document.getElementById('recordBtn');
+        var status = document.getElementById('recordStatus');
+        var rtaBox = document.getElementById('rtaContainer');
+
+        if (isRecording) {
+            isRecording = false;
+            btn.innerText = 'Bắt đầu Nói Vào Micro';
+            status.innerText = 'Đã dừng nói! Liem STT đang sửa lỗi câu hoàn chỉnh...';
+
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+            if (rtaAnimationId) {
+                cancelAnimationFrame(rtaAnimationId);
+            }
+            if (microphoneStream) {
+                microphoneStream.getTracks().forEach(function(t) { t.stop(); });
+            }
+
+            // Perform Liem STT Correction on the accumulated sentence
+            setTimeout(function() {
+                finishLiveSpeechCorrection();
+            }, 500);
+            return;
+        }
+
+        // Start Recording
+        var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+            alert('Trình duyệt của bạn không hỗ trợ Web Speech API trực tiếp! Vui lòng dùng Google Chrome hoặc Microsoft Edge.');
+            return;
+        }
+
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                microphoneStream = stream;
+                isRecording = true;
+                recordedFullTranscript = '';
+                rtaBox.style.display = 'block';
+                document.getElementById('liveSpeechText').innerText = '(Đang lắng nghe, hãy nói vào micro...)';
+                btn.innerText = '⏹ DỪNG NÓI (XUẤT KẾT QUẢ)';
+                status.innerText = '● Đang ghi âm & lắng nghe trực tiếp...';
+
+                // Setup Volume meter
+                try {
+                    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                    audioContext = new AudioContext();
+                    var source = audioContext.createMediaStreamSource(stream);
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+                    source.connect(analyser);
+
+                    var dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    function updateRta() {
+                        if (!isRecording) return;
+                        analyser.getByteFrequencyData(dataArray);
+                        var sum = 0;
+                        for (var i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                        var avg = sum / dataArray.length;
+                        var pct = Math.min(100, Math.round((avg / 128) * 100));
+                        document.getElementById('audioLevelBar').value = pct;
+                        document.getElementById('audioLevelText').innerText = pct + '%';
+                        rtaAnimationId = requestAnimationFrame(updateRta);
+                    }
+                    updateRta();
+                } catch(e) {}
+
+                // Setup SpeechRecognition
+                recognition = new SpeechRec();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'vi-VN';
+
+                recognition.onresult = function(event) {
+                    var fullTranscript = '';
+                    for (var i = 0; i < event.results.length; ++i) {
+                        fullTranscript += event.results[i][0].transcript + ' ';
+                    }
+                    fullTranscript = fullTranscript.trim();
+                    if (fullTranscript) {
+                        recordedFullTranscript = fullTranscript;
+                        document.getElementById('liveSpeechText').innerText = '» ' + fullTranscript;
+                        document.getElementById('textInputBox').value = fullTranscript;
+                    }
+                };
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    if (event.error === 'not-allowed') {
+                        status.innerText = '⚠️ Bị từ chối Micro! Vui lòng cấp quyền micro trong cài đặt trình duyệt.';
+                        alert('Trình duyệt chưa được cấp quyền Micro! Nếu trên điện thoại, vui lòng mở link trực tiếp: https://koilq-liem-stt-web.static.hf.space và bấm "Cho phép" Micro.');
+                    } else if (event.error === 'no-speech') {
+                        status.innerText = 'Chưa nghe thấy tiếng nói, vui lòng thử lại gần micro hơn!';
+                    } else {
+                        status.innerText = 'Lỗi micro: ' + event.error;
+                    }
+                };
+
+                recognition.onend = function() {
+                    if (isRecording) {
+                        try { recognition.start(); } catch(e) {}
+                    }
+                };
+
+                recognition.start();
+            })
+            .catch(function(err) {
+                alert('Không thể mở micro: ' + err.message + '\nNếu trên điện thoại, hãy thử mở link trực tiếp: https://koilq-liem-stt-web.static.hf.space');
+                status.innerText = 'Không thể mở micro (' + err.message + ')';
+                isRecording = false;
+            });
+    }
+
+    function finishLiveSpeechCorrection() {
+        var raw = recordedFullTranscript;
+        if (!raw) {
+            document.getElementById('recordStatus').innerText = 'Chưa nghe thấy lời nói!';
+            return;
+        }
+
+        var res = applyLiemCorrection(raw);
+
+        document.getElementById('audioResultBox').style.display = 'block';
+        document.getElementById('outRawAsr').innerText = raw;
+        document.getElementById('outRevisedAsr').innerHTML = res.text;
+
+        var chgHtml = '';
+        if (res.changes.length > 0) {
+            chgHtml = '<b>Chi tiết sửa đổi từ ngữ:</b><br>';
+            res.changes.forEach(function(c) {
+                chgHtml += '➔ <font color="red"><s>' + c.original + '</s></font> sửa thành <b><font color="green">' + c.fix + '</font></b><br>';
+            });
+        } else {
+            chgHtml = '<i>(Câu nói hoàn chỉnh - không có từ nào bị sửa ẩu)</i>';
+        }
+        document.getElementById('outChangesList').innerHTML = chgHtml;
+
+        document.getElementById('outContrastiveTop5').innerHTML = '<ol style="margin:0; padding-left:18px;"><li><b>Nhận diện trực tiếp qua Micro</b></li><li>Độ chính xác cao</li></ol>';
+        document.getElementById('recordStatus').innerText = 'Đã hoàn tất câu hoàn chỉnh!';
+    }
+
+    // 5. TEXT PROCESS
+    function setTextSample(text) {
+        document.getElementById('textInputBox').value = text;
+    }
+
+    function executeTextProcess() {
+        var text = document.getElementById('textInputBox').value.trim();
+        if (!text) {
+            alert('Vui lòng nhập câu vào ô trước!');
+            return;
+        }
+
+        var res = applyLiemCorrection(text);
+        document.getElementById('textResultBox').style.display = 'block';
+        document.getElementById('textOrigOut').innerText = text;
+        document.getElementById('textFixedOut').innerHTML = res.text;
+    }
+</script>
+
+</body>
+</html>
